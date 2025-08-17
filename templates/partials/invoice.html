@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Invoice • TrueType Services</title>
+<style>
+  :root{
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --brand:#0b3b7a; --brand-2:#1e293b;
+    --bg:#ffffff; --chip:#f1f5f9; --accent:#0ea5e9; --soft:#f6f8fb; --ok:#16a34a;
+  }
+  *{box-sizing:border-box} html,body{height:100%}
+  body{margin:0; background:var(--soft); color:var(--ink); font:14px/1.55 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji"; -webkit-print-color-adjust:exact; print-color-adjust:exact;}
+  .page{ max-width:960px; margin:28px auto; padding:0 16px; }
+  .invoice{ background:var(--bg); border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:0 6px 28px rgba(2,6,23,.06); }
+  .inv-header{ display:grid; grid-template-columns: 1fr auto auto; gap:16px; align-items:center; padding:22px 24px;
+    background: radial-gradient(1000px 400px at 10% -200px, rgba(14,165,233,.10), transparent 60%), linear-gradient(180deg, #fff, #fafcff);
+    border-bottom:1px solid var(--line);
+  }
+  .logo{ display:flex; align-items:center; gap:14px; min-width:0; }
+  .logo-box{ width:60px; height:60px; border-radius:14px; overflow:hidden; border:1px solid var(--line); background:#fff; display:grid; place-items:center; }
+  .logo-box img{max-width:100%; max-height:100%; object-fit:contain; display:block}
+  .brand-block{min-width:0}
+  .brand{ font-weight:800; letter-spacing:.2px; color:var(--brand-2); font-size:20px; line-height:1.2; }
+  .subtitle{font-size:12px; color:var(--muted)}
+  .status{ justify-self:end; background:var(--chip); border:1px solid var(--line); padding:6px 10px; border-radius:999px; color:var(--brand-2); font-weight:600; white-space:nowrap; align-self:start; }
+  .qr-wrap{ justify-self:end; width:88px; height:88px; border-radius:12px; background:#fff; border:1px solid var(--line); display:grid; place-items:center; padding:6px; }
+  .qr-wrap img{ display:block; width:100%; height:100%; object-fit:contain }
+  .meta{ display:grid; grid-template-columns: 1fr auto; gap:12px 24px; padding:18px 24px; border-bottom:1px solid var(--line); }
+  .meta .chips{display:flex; gap:10px 12px; flex-wrap:wrap}
+  .chip{background:var(--chip); border:1px solid var(--line); padding:6px 12px; border-radius:999px; font-size:12px; color:var(--brand-2)}
+  .mono{font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1}
+  .right{ min-width:280px }
+  .right .row{ display:flex; justify-content:space-between; gap:18px; font-size:13px; padding:4px 0 }
+  .right .key{ color:var(--muted) } .right .val{ font-weight:700; color:var(--ink) }
+  .section-title{ padding:14px 24px; font-weight:800; letter-spacing:.3px; color:var(--brand-2); border-bottom:1px solid var(--line); background:#fcfdff; }
+  .table-wrap{ padding:0 24px 8px }
+  table.table{ width:100%; border-collapse:separate; border-spacing:0; font-size:14px; overflow:hidden; border:1px solid var(--line); border-radius:12px; }
+  .table thead th{ text-align:left; font-weight:800; color:var(--brand-2); background:linear-gradient(180deg,#f8fafc,#f3f6fb); border-bottom:1px solid var(--line); padding:12px 14px; }
+  .table tbody td{ padding:12px 14px; border-bottom:1px solid var(--line); vertical-align:top; }
+  .table tbody tr:nth-child(odd) td{ background:#fcfdff } .table tbody tr:last-child td{ border-bottom:0 }
+  .k{ color:var(--muted); width:260px } .v{ font-weight:600; color:var(--ink) } .bold{ font-weight:800 }
+  .totals{ display:grid; grid-template-columns: 1fr minmax(300px, 36%); gap:18px; padding:10px 24px 24px; border-top:1px solid var(--line); }
+  .notes{ font-size:12px; color:var(--muted); background:#fbfdff; border:1px dashed var(--line); border-radius:12px; padding:12px 14px; }
+  .totals .box{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#fff; box-shadow:0 4px 16px rgba(2,6,23,.05); }
+  .totals .row{ display:flex; justify-content:space-between; align-items:center; gap:16px; padding:12px 14px; border-bottom:1px solid var(--line); }
+  .totals .row:last-child{border-bottom:0} .label{ color:var(--muted); font-weight:600 } .value{ font-weight:800; color:var(--ink) }
+  .grand{ background:linear-gradient(180deg,#fff,#f8fbff) } .grand .value{ font-size:20px; color:var(--brand) }
+  .footer{ padding:14px 24px 20px; border-top:1px solid var(--line); background:#fcfdff; font-size:12px; color:var(--muted);
+    display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .print-actions{ padding:14px 0 0; display:flex; justify-content:flex-end }
+  .btn{ appearance:none; border:1px solid var(--line); background:#ffffff; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700; box-shadow:0 2px 10px rgba(2,6,23,.08); }
+  .btn:hover{ background:#f8fafc }
+  @media print{ body{background:#fff} .page{max-width:none; margin:0; padding:0} .print-actions{display:none} .invoice{border:0; box-shadow:none; border-radius:0}
+    .notes{border-style:solid} .inv-header, .meta, .section-title, .table, .totals, .footer{ -webkit-print-color-adjust:exact; print-color-adjust:exact }
+    @page { size: A4; margin: 16mm } .inv-header, .meta, .totals, .footer { page-break-inside: avoid } }
+  @media (max-width:720px){ .inv-header{ grid-template-columns: 1fr auto; grid-auto-rows: auto; } .status{ order:3; justify-self:start }
+    .qr-wrap{ order:2 } .meta{ grid-template-columns:1fr } .right{ min-width:0 } .k{ width:46% } .totals{ grid-template-columns:1fr } }
+</style>
+</head>
+<body>
+  <div class="page">
+    <section class="invoice" id="invoice" aria-label="Invoice">
+      <!-- Header -->
+      <header class="inv-header">
+        <div class="logo">
+          <div class="logo-box">
+            <img src="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" alt="TrueType Services" />
+          </div>
+          <div class="brand-block">
+            <div class="brand" id="brandName">TrueType Services</div>
+            <div class="subtitle">Professional Sales Invoice</div>
+          </div>
+        </div>
+        <div class="status" id="statusChip" aria-live="polite">
+          Order • {{ order.status|default('Pending')|title }}
+        </div>
+        <!-- Static QR image (URL encodes text summary) -->
+        <div class="qr-wrap" title="Scan for invoice details">
+          <img id="qrImg" alt="Invoice QR">
+        </div>
+      </header>
+
+      <!-- Meta -->
+      <section class="meta">
+        <div class="chips">
+          <span class="chip">Order</span>
+          <span class="chip mono">Order ID: <span class="bold" id="orderId">{{ order.order_id or order._id }}</span></span>
+          <span class="chip mono">
+            Client: <span class="bold">
+              {{ (client.name or '—') ~ ' (' ~ (client.client_id or '—') ~ ')' }}
+            </span>
+          </span>
+          <span class="chip mono">Type: <span class="bold" id="orderType">{{ (order.order_type or 'combo')|lower|replace('_','-')|title }}</span></span>
+        </div>
+        <div class="right">
+          <div class="row"><span class="key">Invoice Date</span><span class="val mono" id="invDate">{{ (order.date or now).strftime('%Y-%m-%d') }}</span></div>
+          <div class="row"><span class="key">Due Date</span><span class="val mono" id="dueDate">{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '-' }}</span></div>
+        </div>
+      </section>
+
+      <!-- Section: Order Details -->
+      <h2 class="section-title">Order Details</h2>
+      <div class="table-wrap">
+        <table class="table" role="table" aria-label="Order details">
+          <thead>
+            <tr><th scope="col" style="width:30%">Field</th><th scope="col">Information</th></tr>
+          </thead>
+          <tbody>
+            <tr><td class="k">Client Name</td><td class="v" id="cname">{{ client.name or '—' }}</td></tr>
+            <tr><td class="k">Client ID</td><td class="v mono" id="cid">{{ client.client_id or '—' }}</td></tr>
+            <tr><td class="k">Client Phone</td><td class="v mono" id="cphone">{{ client.phone or '—' }}</td></tr>
+
+            <tr><td class="k">Product</td><td class="v strong" id="prod">{{ order.product or '—' }}</td></tr>
+            <tr><td class="k">Vehicle Number</td><td class="v mono" id="veh">{{ order.vehicle_number or '—' }}</td></tr>
+            <tr><td class="k">Driver's Name</td><td class="v" id="dname">{{ order.driver_name or '—' }}</td></tr>
+            <tr><td class="k">Driver's Phone</td><td class="v mono bold" id="dphone">{{ order.driver_phone or '—' }}</td></tr>
+            <tr><td class="k">Quantity (L)</td><td class="v mono" id="qty">
+              {{ '{:,.0f}'.format((order.quantity or 0.0)|float) }}
+            </td></tr>
+            <tr><td class="k">Region</td><td class="v" id="region">{{ order.region or '—' }}</td></tr>
+            <tr><td class="k">S‑Tax (GHS/L)</td><td class="v mono" id="stax">{{ '{:,.2f}'.format(order.s_tax or 0) }}</td></tr>
+            <tr><td class="k">S‑BDC (GHS/L)</td><td class="v mono" id="sbdc">{{ '{:,.2f}'.format(order.s_bdc_omc or 0) }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Totals -->
+      <section class="totals">
+        <div class="notes">
+          <div class="em">Thank you for doing business with TrueType Services.</div>
+          <div class="em">For enquiries, call <span class="bold">+233 53 039 3625</span>.</div>
+        </div>
+
+        <div class="box" aria-label="Totals">
+          {% set q = (order.quantity or 0.0)|float %}
+          {% set stax = (order.s_tax or 0.0)|float %}
+          {% set sbdc = (order.s_bdc_omc or 0.0)|float %}
+          {% set total_debt = order.total_debt if order.total_debt is not none else (stax + sbdc) * q %}
+          <div class="row">
+            <div class="label">S‑Tax × Quantity</div>
+            <div class="value mono" id="taxTotal">GHS {{ '{:,.2f}'.format(stax * q) }}</div>
+          </div>
+          <div class="row">
+            <div class="label">S‑BDC × Quantity</div>
+            <div class="value mono" id="bdcTotal">GHS {{ '{:,.2f}'.format(sbdc * q) }}</div>
+          </div>
+          <div class="row grand">
+            <div class="label bold">Total Debt</div>
+            <div class="value mono" id="grandTotal">GHS {{ '{:,.2f}'.format(total_debt) }}</div>
+          </div>
+          <div class="row">
+            <div class="label">Due Date</div>
+            <div class="value mono" id="dueDate2">{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '-' }}</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div>Issued by TrueType Services · Accra, Ghana</div>
+        <div class="mono">Receipt Ref: {{ receipt_ref or '-' }}</div>
+      </footer>
+    </section>
+
+    <div class="print-actions">
+      <button class="btn" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+  </div>
+
+  <!-- Build static QR URL that encodes a plain-text summary of the order -->
+  <script>
+    (function () {
+      function val(id){const el=document.getElementById(id);return el?el.textContent.trim():"";}
+      // Create a readable multi-line text payload
+      const payloadLines = [
+        "TrueType Services • Order Invoice",
+        "--------------------------------",
+        `Order ID: ${val('orderId')}`,
+        `Type: ${val('orderType')}`,
+        `Invoice Date: ${val('invDate')}`,
+        `Due Date: ${val('dueDate')}`,
+        "",
+        `Client Name: ${val('cname')}`,
+        `Client ID: ${val('cid')}`,
+        `Client Phone: ${val('cphone')}`,
+        "",
+        `Product: ${val('prod')}`,
+        `Vehicle Number: ${val('veh')}`,
+        `Driver Name: ${val('dname')}`,
+        `Driver Phone: ${val('dphone')}`,
+        `Quantity (L): ${val('qty')}`,
+        `Region: ${val('region')}`,
+        `S-Tax (GHS/L): ${val('stax')}`,
+        `S-BDC (GHS/L): ${val('sbdc')}`,
+        "",
+        `S-Tax × Qty: ${val('taxTotal')}`,
+        `S-BDC × Qty: ${val('bdcTotal')}`,
+        `Total Debt: ${val('grandTotal')}`
+      ];
+      const text = payloadLines.join("\n");
+
+      // Use a static QR image service to render the text (keeps template lightweight)
+      // You can swap to another provider or self-hosted QR later if preferred.
+      const url = "https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=" + encodeURIComponent(text);
+      const img = document.getElementById('qrImg');
+      if (img) img.src = url;
+    })();
+  </script>
+</body>
+</html>

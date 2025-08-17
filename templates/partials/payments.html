@@ -1,0 +1,145 @@
+<div class="container py-4">
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-3">
+    <h4 class="mb-0"><i class="fas fa-money-check-alt me-2 text-primary"></i>Received Payments</h4>
+    <button class="btn btn-success btn-sm" onclick="exportToExcel()">
+      <i class="fas fa-file-excel me-1"></i> Export to Excel
+    </button>
+  </div>
+
+  <div class="mb-3">
+    <input type="text" id="searchInput" class="form-control shadow-sm" placeholder="🔍 Search by client name, phone or ID">
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-bordered table-hover align-middle text-nowrap table-striped" id="paymentDataTable">
+      <thead class="table-primary text-center">
+        <tr>
+          <th><i class="far fa-calendar-alt"></i> Date</th>
+          <th><i class="fas fa-user"></i> Client</th>
+          <th><i class="fas fa-phone"></i> Phone</th>
+          <th><i class="fas fa-coins"></i> Amount</th>
+          <th><i class="fas fa-university"></i> Bank</th>
+          <th><i class="fas fa-check-circle"></i> Status</th>
+          <th><i class="fas fa-file-alt"></i> Proof</th>
+          <th><i class="fas fa-cogs"></i> Action</th>
+        </tr>
+      </thead>
+      <tbody id="paymentsTable">
+        {% for payment in payments %}
+        <tr data-search="{{ payment.client_name|lower }} {{ payment.client_id_str|lower }} {{ payment.phone }}">
+          <td>{{ payment.date }}</td>
+          <td>
+            <strong>{{ payment.client_name }}</strong><br>
+            <small class="text-muted">{{ payment.client_id_str }}</small>
+          </td>
+          <td>{{ payment.phone }}</td>
+          <td><span class="fw-bold text-success">GHS {{ '%.2f'|format(payment.amount) }}</span></td>
+<td>
+  {{ payment.bank_name }}
+  {% if payment.account_last4 %}
+    <span class="text-muted">(****{{ payment.account_last4 }})</span>
+  {% endif %}
+</td>
+          <td class="text-center">
+            {% if payment.status == 'confirmed' %}
+              <span class="badge bg-success"><i class="fas fa-check-circle"></i> Confirmed</span>
+            {% else %}
+              <span class="badge bg-warning text-dark"><i class="fas fa-hourglass-half"></i> Pending</span>
+            {% endif %}
+          </td>
+          <td class="text-center">
+            <a href="{{ payment.proof_url }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+              <i class="fas fa-eye"></i> View
+            </a>
+          </td>
+          <td class="text-center">
+            {% if payment.status != 'confirmed' %}
+              <button class="btn btn-primary btn-sm" onclick="openConfirmModal('{{ payment._id }}')">
+                <i class="fas fa-check"></i> Confirm
+              </button>
+            {% else %}
+              <span class="text-muted"><i class="fas fa-check-double"></i> Done</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content shadow">
+      <form id="confirmForm">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>Confirm Payment</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="modalPaymentId">
+          <div class="mb-3">
+            <label for="feedback" class="form-label">Feedback to Client (optional):</label>
+            <textarea id="feedback" class="form-control" rows="3" placeholder="e.g., Your payment has been received successfully. Thank you!"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane"></i> Confirm Payment
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Dependencies -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<script>
+  // Search filter
+  $('#searchInput').on('keyup', function () {
+    const value = $(this).val().toLowerCase();
+    $('#paymentsTable tr').each(function () {
+      const search = $(this).data('search');
+      $(this).toggle(search.includes(value));
+    });
+  });
+
+  // Open modal
+  function openConfirmModal(paymentId) {
+    $('#modalPaymentId').val(paymentId);
+    $('#feedback').val('');
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    modal.show();
+  }
+
+  // Submit modal confirmation
+  $('#confirmForm').submit(function (e) {
+    e.preventDefault();
+    const paymentId = $('#modalPaymentId').val();
+    const feedback = $('#feedback').val();
+
+    $.post(`/confirm_payment/${paymentId}`, { feedback: feedback }, function (res) {
+      if (res.success) {
+        const row = $(`button[onclick="openConfirmModal('${paymentId}')"]`).closest("tr");
+        row.find(".text-center .badge").removeClass("bg-warning").addClass("bg-success").html('<i class="fas fa-check-circle"></i> Confirmed');
+        row.find("td:last-child").html('<span class="text-success"><i class="fas fa-check-double"></i> Done</span>');
+        bootstrap.Modal.getInstance(document.getElementById('confirmModal')).hide();
+      } else {
+        alert("Error: " + res.error);
+      }
+    });
+  });
+
+  // Export to Excel
+  function exportToExcel() {
+    const wb = XLSX.utils.table_to_book(document.getElementById('paymentDataTable'), { sheet: "Payments" });
+    XLSX.writeFile(wb, `Payments_Export_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+</script>
