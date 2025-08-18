@@ -5,15 +5,12 @@
   <title>Bank Profile - {{ bank.bank_name }}</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Favicon -->
   <link rel="icon" href="https://res.cloudinary.com/dl2ipzxyk/image/upload/v1751107241/logo_ijmteg.avif" type="image/png">
-
-  <!-- Bootstrap & Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
 
   <style>
-    :root{ --ink:#0b1320; --muted:#475569; --line:#e2e8f0; --soft:#f8fafc; --brand:#0d6efd; --ok:#198754; }
+    :root{ --ink:#0b1320; --muted:#475569; --line:#e2e8f0; --soft:#f8fafc; --brand:#0d6efd; --ok:#198754; --warn:#d9480f }
     html,body{height:100%}
     body{
       background: radial-gradient(1200px 800px at 10% -10%, #eef2f7 0%, #ffffff 60%) no-repeat,
@@ -33,6 +30,10 @@
     .badge-soft{ background:#eef2ff;border:1px solid #dbe5ff;color:#274690; }
     .back-btn{margin-bottom:1rem}
     .meta-line{color:var(--muted); font-size:.9rem}
+    .debt-card{background:#fff;border:1px solid var(--line); border-radius:12px;}
+    .pill{border-radius:999px;padding:.2rem .6rem;font-size:.8rem}
+    .pill-warn{background:#fff4e6;color:var(--warn)}
+    .pill-ok{background:#e6fcf5;color:#0ca678}
     @media print{
       .no-print{display:none !important}
       body{background:#fff}
@@ -47,22 +48,21 @@
   <!-- Top Bar -->
   <div class="d-flex align-items-center justify-content-between no-print">
     <div class="back-btn">
-      <button onclick="history.back()" class="btn btn-outline-secondary">
+      <button onclick="history.back()" class="btn btn-outline-secondary" type="button">
         <i class="bi bi-arrow-left"></i> Back
       </button>
     </div>
-    <!-- Export toolbar -->
     <div class="d-flex export-toolbar">
-      <button id="btnExportPDF" class="btn btn-danger">
+      <button id="btnExportPDF" class="btn btn-danger" type="button">
         <i class="bi bi-filetype-pdf me-1"></i> Export PDF
       </button>
-      <button id="btnExportXLSX" class="btn btn-success">
+      <button id="btnExportXLSX" class="btn btn-success" type="button">
         <i class="bi bi-filetype-xlsx me-1"></i> Export Excel
       </button>
-      <button id="btnExportCSV" class="btn btn-primary">
+      <button id="btnExportCSV" class="btn btn-primary" type="button">
         <i class="bi bi-filetype-csv me-1"></i> Export CSV
       </button>
-      <button id="btnPrint" class="btn btn-outline-dark">
+      <button id="btnPrint" class="btn btn-outline-dark" type="button">
         <i class="bi bi-printer me-1"></i> Print
       </button>
     </div>
@@ -88,7 +88,6 @@
           <div class="meta-line"><strong>Branch:</strong> {{ bank.branch }}</div>
         </div>
         <div class="text-md-end">
-          <!-- summary total gets formatted by JS -->
           <div class="summary-value" id="summaryTotal" data-val="{{ '%.2f'|format(total_received) }}">
             Total Received: GHS {{ '%.2f'|format(total_received) }}
           </div>
@@ -105,31 +104,30 @@
     </div>
   </div>
 
-  <!-- Filter -->
-  <div class="filter-card mb-4 no-print">
-    <form method="get" class="row g-3">
-      <div class="col-md-4">
-        <label class="form-label">Start Date</label>
-        <input type="date" name="start_date" value="{{ start_date or '' }}" class="form-control" />
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">End Date</label>
-        <input type="date" name="end_date" value="{{ end_date or '' }}" class="form-control" />
-      </div>
-      <div class="col-md-4 d-grid align-items-end">
-        <div class="d-flex gap-2">
-          <button type="submit" class="btn btn-primary flex-fill">
-            <i class="bi bi-funnel me-1"></i> Filter
-          </button>
-          <a href="" class="btn btn-outline-secondary">
-            <i class="bi bi-x-circle me-1"></i> Reset
-          </a>
-        </div>
-      </div>
-    </form>
+  <!-- NEW: OMCs with S-Tax Debt -->
+  <div class="debt-card p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h6 class="mb-0"><i class="bi bi-exclamation-triangle me-1 text-warning"></i> OMCs with S-Tax Debt</h6>
+      <span class="pill pill-warn" id="debtSummary" style="display:none"></span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="omcDebtTable">
+        <thead>
+          <tr>
+            <th>OMC</th>
+            <th class="text-end">Outstanding (GHS)</th>
+            <th class="text-end">Orders Unpaid</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="4" class="text-muted text-center">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
-  <!-- Payments -->
+  <!-- Payments (existing) -->
   {% if payments %}
   <div id="exportArea" class="table-wrap shadow-sm mb-5">
     <div class="p-3 pb-0">
@@ -156,7 +154,6 @@
           <tr>
             <td>{{ loop.index }}</td>
             <td>{{ pay.date.strftime('%Y-%m-%d %H:%M') }}</td>
-            <!-- raw numeric in data-num; UI gets thousand separators via JS -->
             <td class="amt" data-num="{{ '%.2f'|format(pay.amount) }}">{{ '%.2f'|format(pay.amount) }}</td>
             <td>{{ pay.account_last4 }}</td>
             <td>
@@ -187,23 +184,111 @@
   </div>
   {% endif %}
 
+  <!-- NEW: History of S-Tax payments made from this bank -->
+  <div class="table-wrap shadow-sm">
+    <div class="p-3 pb-0">
+      <h6 class="mb-2"><i class="bi bi-journal-check me-1"></i> S-Tax Payments From This Bank</h6>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>OMC</th>
+            <th>Order ID</th>
+            <th class="text-end">Amount (GHS)</th>
+            <th>Reference</th>
+            <th>Paid By</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if bank_tax_rows %}
+            {% for r in bank_tax_rows %}
+            <tr>
+              <td>{{ r.payment_date_str }}</td>
+              <td>{{ r.omc }}</td>
+              <td>{{ r.order_id }}</td>
+              <td class="text-end">{{ '%.2f'|format(r.amount) }}</td>
+              <td>{{ r.reference or '—' }}</td>
+              <td>{{ r.paid_by or '—' }}</td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="6" class="text-center text-muted py-3">No S-Tax payments recorded from this bank yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
-<!-- JS: Bootstrap -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<!-- Pay OMC Modal -->
+<div class="modal fade" id="payOmcModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="payOmcForm" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title">Pay OMC S-Tax (Partial Allowed)</h5>
+        <!-- IMPORTANT: prevent unintended submit -->
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body row g-2">
+        <input type="hidden" id="bankId" value="{{ bank._id }}">
+        <div class="col-12">
+          <label class="form-label">OMC</label>
+          <input type="text" class="form-control" id="omcName" readonly>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Outstanding (GHS)</label>
+          <input type="text" class="form-control" id="omcOutstanding" readonly>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Orders Unpaid</label>
+          <input type="text" class="form-control" id="omcOrders" readonly>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Payment Amount (GHS)</label>
+          <input type="number" step="0.01" class="form-control" id="payAmount" required>
+          <div class="form-text">Must be ≤ outstanding.</div>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Payment Date</label>
+          <input type="date" class="form-control" id="payDate" required>
+        </div>
+        <div class="col-6">
+          <label class="form-label">Reference</label>
+          <input type="text" class="form-control" id="payRef" placeholder="e.g. BANK-TXN-123">
+        </div>
+        <div class="col-6">
+          <label class="form-label">Paid By</label>
+          <input type="text" class="form-control" id="payBy" value="{{ bank.account_name }}" required>
+        </div>
+        <div class="col-12">
+          <small id="allocHint" class="text-muted">
+            Allocation is automatic from oldest unpaid order to newest for this OMC.
+          </small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <!-- IMPORTANT: prevent unintended submit -->
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <!-- Explicit submit button -->
+        <button id="payOmcSubmit" class="btn btn-primary" type="submit">
+          <i class="bi bi-check2-circle me-1"></i> Make Payment
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
 
-<!-- JS: jsPDF & AutoTable (PDF export) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-
-<!-- JS: SheetJS (Excel export) -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <script>
-  // ---------- Helpers ----------
-  function sanitizeFilename(s){
-    return (s||'export').toString().replace(/[\\\/:*?"<>|]/g,'-').replace(/\s+/g,'_');
-  }
+  // ---------- Existing helpers (exports) ----------
+  function sanitizeFilename(s){ return (s||'export').toString().replace(/[\\\/:*?"<>|]/g,'-').replace(/\s+/g,'_'); }
   function getMeta(){
     const bank = "{{ bank.bank_name|e }}";
     const branch = "{{ bank.branch|e }}";
@@ -218,16 +303,9 @@
     const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr=>{
       return Array.from(tr.children).map(td=>{
         const text = td.textContent.trim();
-        // Use raw number from data-num for numeric cells
         const numAttr = td.getAttribute('data-num');
         if (numAttr !== null){
-          const n = parseFloat(numAttr.replace(/,/g,''));
-          return isNaN(n) ? text : n;
-        }
-        // Fallback: parse displayed numeric text for amount column
-        if (/Amount/i.test(headers[2]) && td.cellIndex === 2){
-          const n = parseFloat(text.replace(/[^\d.-]/g,''));
-          return isNaN(n) ? text : n;
+          const n = parseFloat(numAttr.replace(/,/g,'')); return isNaN(n) ? text : n;
         }
         return text;
       });
@@ -235,159 +313,211 @@
     return { headers, rows };
   }
   function toCSV(headers, rows){
-    const esc = v => {
-      if (v === null || v === undefined) return '';
-      const s = (''+v).replace(/"/g,'""');
-      return /[",\n]/.test(s) ? `"${s}"` : s;
-    };
+    const esc = v => { if (v==null) return ''; const s=(''+v).replace(/"/g,'""'); return /[",\n]/.test(s)?`"${s}"`:s; };
     return [headers.map(esc).join(','), ...rows.map(r=>r.map(esc).join(','))].join('\n');
   }
   function saveBlob(content, mime, filename){
     const blob = new Blob([content], {type: mime});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
   }
 
-  // ---------- Exports ----------
+  // ---------- New: Load OMC debts ----------
+  const bankId = "{{ bank._id }}";
+  const debtTableBody = document.querySelector('#omcDebtTable tbody');
+  const debtSummary = document.getElementById('debtSummary');
+
+  async function loadOmcDebts(){
+    debtTableBody.innerHTML = `<tr><td colspan="4" class="text-muted text-center">Loading…</td></tr>`;
+    const res = await fetch(`/bank-profile/${bankId}/omc-debts`);
+    const data = await res.json();
+    if (data.status !== 'success'){
+      debtTableBody.innerHTML = `<tr><td colspan="4" class="text-danger text-center">${data.message || 'Failed to load debts'}</td></tr>`;
+      return;
+    }
+    const rows = data.debts || [];
+    if (!rows.length){
+      debtTableBody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">No OMC has outstanding S-Tax at the moment.</td></tr>`;
+      debtSummary.style.display = 'none';
+      return;
+    }
+    const fmt = n => Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+    const total = rows.reduce((s,r)=> s + (r.outstanding || 0), 0);
+    debtSummary.textContent = `Total Outstanding: GHS ${fmt(total)}`;
+    debtSummary.style.display = '';
+
+    debtTableBody.innerHTML = rows.map(r=>`
+      <tr>
+        <td>${r.omc}</td>
+        <td class="text-end">GHS ${fmt(r.outstanding)}</td>
+        <td class="text-end">${r.unpaid_orders}</td>
+        <td class="text-end">
+          <button class="btn btn-sm btn-primary" type="button"
+                  data-omc="${r.omc}" data-out="${r.outstanding}" data-orders="${r.unpaid_orders}"
+                  onclick="openPayOmcModal(this)">
+            <i class="bi bi-cash-coin me-1"></i> Pay from this bank
+          </button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  function openPayOmcModal(btn){
+    const omc = btn.getAttribute('data-omc');
+    const out = parseFloat(btn.getAttribute('data-out') || '0');
+    const orders = btn.getAttribute('data-orders') || '0';
+    document.getElementById('omcName').value = omc;
+    document.getElementById('omcOutstanding').value = Number(out).toFixed(2);
+    document.getElementById('omcOrders').value = orders;
+    document.getElementById('payAmount').value = ''; // SAFER: force user to type the amount
+    document.getElementById('payDate').value = new Date().toISOString().slice(0,10);
+    const m = new bootstrap.Modal(document.getElementById('payOmcModal'));
+    m.show();
+  }
+
+  // ---------- New: submit intent guard + double-submit lock ----------
+  let payIntent = false;
+  let isSubmitting = false;
+
+  // mark intent only when the real submit button is clicked
+  document.getElementById('payOmcSubmit')?.addEventListener('click', () => {
+    payIntent = true;
+  });
+
+  // block Enter key from submitting the form
+  document.getElementById('payOmcForm')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
+
+  // reset guards when modal hides
+  document.getElementById('payOmcModal')?.addEventListener('hidden.bs.modal', () => {
+    payIntent = false;
+    isSubmitting = false;
+    document.getElementById('payOmcForm')?.reset();
+  });
+
+  // ---------- Safe submit handler ----------
+  document.getElementById('payOmcForm')?.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+
+    // only proceed if the submit button was used
+    if (!payIntent) return;
+
+    if (isSubmitting) return; // guard against double click
+    isSubmitting = true;
+
+    const amount = parseFloat(document.getElementById('payAmount').value || '0');
+    const outstanding = parseFloat(document.getElementById('omcOutstanding').value || '0');
+    if (!(amount > 0)){ isSubmitting = false; return alert('Amount must be greater than 0'); }
+    if (amount > outstanding){ isSubmitting = false; return alert('Amount exceeds outstanding'); }
+
+    if (!confirm(`Confirm paying GHS ${amount.toFixed(2)} toward ${document.getElementById('omcName').value}?`)) {
+      isSubmitting = false; payIntent = false; return;
+    }
+
+    const payload = {
+      bank_id: document.getElementById('bankId').value,
+      omc: document.getElementById('omcName').value,
+      amount: amount,
+      payment_date: document.getElementById('payDate').value,
+      reference: document.getElementById('payRef').value,
+      paid_by: document.getElementById('payBy').value
+    };
+
+    try {
+      const res = await fetch('/bank-profile/pay-omc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.status === 'success'){
+        bootstrap.Modal.getInstance(document.getElementById('payOmcModal')).hide();
+        await loadOmcDebts();
+        location.reload(); // refresh page so both bank screen and tax data reflect
+      } else {
+        alert(data.message || 'Payment failed');
+      }
+    } catch (err){
+      console.error(err);
+      alert('Network error while submitting payment.');
+    } finally {
+      isSubmitting = false;
+      payIntent = false;
+    }
+  });
+
+  // ---------- Exports & formatting ----------
   async function exportPDF(){
     const { bank, branch, acc, start, end } = getMeta();
     const { headers, rows } = tableToArray('paymentsTable');
-
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4', compress: true, hotfixes: ["px_scaling"] });
-
-    const title = `${bank} – ${branch}`;
-    const subtitle = `Account: ${acc}`;
-    const period = (start||end) ? `Period: ${start || '—'} → ${end || '—'}` : '';
-
-    // Header
-    doc.setFont('helvetica','bold'); doc.setFontSize(14);
-    doc.text(title, 40, 40);
-    doc.setFont('helvetica','normal'); doc.setFontSize(11);
-    doc.text(subtitle, 40, 60);
-    if (period) doc.text(period, 40, 78);
-
-    // Table
+    const title = `${bank} – ${branch}`, subtitle = `Account: ${acc}`, period = (start||end) ? `Period: ${start || '—'} → ${end || '—'}` : '';
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.text(title, 40, 40);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11); doc.text(subtitle, 40, 60); if (period) doc.text(period, 40, 78);
     const total = document.getElementById('tableTotal')?.getAttribute('data-total') || '';
-
     doc.autoTable({
-      startY: 100,
-      head: [headers],
-      body: rows,
+      startY: 100, head: [headers], body: rows,
       styles: { fontSize: 9, cellPadding: 6, overflow: 'linebreak' },
       headStyles: { fillColor: [248,250,252], textColor: 20 },
-      columnStyles: {
-        0: { halign: 'right', cellWidth: 40 },
-        1: { cellWidth: 120 },
-        2: { halign: 'right', cellWidth: 110 },
-        3: { halign: 'center', cellWidth: 110 },
-        4: { cellWidth: 120 }
-      },
+      columnStyles: { 0:{halign:'right', cellWidth:40}, 1:{cellWidth:120}, 2:{halign:'right', cellWidth:110}, 3:{halign:'center', cellWidth:110}, 4:{cellWidth:120} },
       didDrawPage: (data) => {
-        const pageCount = doc.getNumberOfPages();
-        const pageSize = doc.internal.pageSize;
-        doc.setFontSize(9);
-        doc.setTextColor(120);
+        const pageCount = doc.getNumberOfPages(), pageSize = doc.internal.pageSize;
+        doc.setFontSize(9); doc.setTextColor(120);
         doc.text(`Generated: ${new Date().toLocaleString()}`, 40, pageSize.height - 24);
         doc.text(`Page ${data.pageNumber} / ${pageCount}`, pageSize.width - 100, pageSize.height - 24);
       }
     });
-
-    // Summary row
     if (total){
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 6,
-        body: [[
-          { content: `Total Received`, styles: { fontStyle: 'bold' } },
-          { content: `GHS ${Number(total).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`, styles:{ halign:'right', fontStyle:'bold' } }
-        ]],
-        theme: 'plain',
-        styles: { fontSize: 11, cellPadding: 6 },
-        columns: [{ header: '', dataKey: 'label' }, { header: '', dataKey: 'value' }],
-        tableWidth: 'wrap',
-        margin: { left: 40 }
+        body: [[ {content:`Total Received`, styles:{fontStyle:'bold'}},
+                 {content:`GHS ${Number(total).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`, styles:{halign:'right', fontStyle:'bold'} } ]],
+        theme: 'plain', styles:{fontSize:11, cellPadding:6}, columns:[{dataKey:'label'},{dataKey:'value'}], tableWidth:'wrap', margin:{left:40}
       });
     }
-
     const fname = sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.pdf`);
     doc.save(fname);
   }
-
   function exportXLSX(){
     const { bank, branch, start, end } = getMeta();
     const { headers, rows } = tableToArray('paymentsTable');
-    const wsData = [headers, ...rows.map(r=>{
-      return r.map((cell, idx)=> (idx === 4 ? '' : cell)); // keep proof column simple
-    })];
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-    // Auto-widths
-    const colWidths = wsData[0].map((h, i) => {
-      const maxLen = Math.max(...wsData.map(row => (row[i] ? (''+row[i]).length : 0)));
-      return { wch: Math.min(Math.max(8, maxLen + 2), 40) };
-    });
-    ws['!cols'] = colWidths;
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Payments');
-    const fname = sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.xlsx`);
-    XLSX.writeFile(wb, fname);
+    const wsData = [headers, ...rows];
+    const wb = XLSX.utils.book_new(); const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const colWidths = wsData[0].map((h,i)=> ({ wch: Math.min(Math.max(8, Math.max(...wsData.map(r=>(''+(r[i]||'')).length))+2), 40) }));
+    ws['!cols'] = colWidths; XLSX.utils.book_append_sheet(wb, ws, 'Payments');
+    XLSX.writeFile(wb, sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.xlsx`));
   }
-
   function exportCSV(){
     const { bank, branch, start, end } = getMeta();
     const { headers, rows } = tableToArray('paymentsTable');
-    const csv = toCSV(headers, rows);
-    const fname = sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.csv`);
-    saveBlob(csv, 'text/csv;charset=utf-8;', fname);
+    saveBlob(toCSV(headers, rows), 'text/csv;charset=utf-8;', sanitizeFilename(`${bank}_${branch}_payments_${start || 'all'}_${end || 'all'}.csv`));
   }
 
-  // ---------- Init & UI formatting ----------
   (function init(){
-    const hasTable = !!document.getElementById('paymentsTable');
     const btnPDF = document.getElementById('btnExportPDF');
     const btnXLSX = document.getElementById('btnExportXLSX');
     const btnCSV = document.getElementById('btnExportCSV');
     const btnPrint = document.getElementById('btnPrint');
-
     const disable = (el, on)=>{ if(el){ el.disabled = on; el.classList.toggle('disabled', on); } };
-    if(!hasTable){
-      disable(btnPDF, true); disable(btnXLSX, true); disable(btnCSV, true);
-    }
-
+    if(!document.getElementById('paymentsTable')){ disable(btnPDF,true); disable(btnXLSX,true); disable(btnCSV,true); }
     if(btnPDF) btnPDF.addEventListener('click', exportPDF);
     if(btnXLSX) btnXLSX.addEventListener('click', exportXLSX);
     if(btnCSV) btnCSV.addEventListener('click', exportCSV);
     if(btnPrint) btnPrint.addEventListener('click', ()=>window.print());
 
-    // Format helper
+    // Numbers formatting
     const fmt = v => Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
-
-    // ✅ Summary total formatting
-    const summary = document.getElementById('summaryTotal');
-    if(summary){
-      const raw = parseFloat((summary.getAttribute('data-val')||'').replace(/,/g,'')) || 0;
-      summary.textContent = 'Total Received: GHS ' + fmt(raw);
-    }
-
-    // ✅ Format all "Amount (GHS)" cells with thousand separators
+    document.getElementById('summaryTotal')?.setAttribute('data-val', document.getElementById('summaryTotal')?.getAttribute('data-val') || '0');
+    const summary = document.getElementById('summaryTotal'); if(summary){ const raw = parseFloat((summary.getAttribute('data-val')||'0').replace(/,/g,''))||0; summary.textContent = 'Total Received: GHS ' + fmt(raw); }
     document.querySelectorAll('#paymentsTable tbody td.amt').forEach(td=>{
-      const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,'')); 
-      if(!isNaN(raw)) td.textContent = fmt(raw);
+      const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,'')); if(!isNaN(raw)) td.textContent = fmt(raw);
     });
+    const t = document.getElementById('tableTotal'); if(t){ const val = parseFloat((t.getAttribute('data-total')||'0').replace(/,/g,'')); if(!isNaN(val)) t.textContent = 'GHS ' + fmt(val); }
 
-    // ✅ Footer total formatting
-    const t = document.getElementById('tableTotal');
-    if(t){
-      const val = parseFloat((t.getAttribute('data-total')||'').replace(/,/g,'')); 
-      if(!isNaN(val)) t.textContent = 'GHS ' + fmt(val);
-    }
+    // Kick off debts load
+    loadOmcDebts();
   })();
 </script>
 </body>
