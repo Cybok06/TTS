@@ -60,11 +60,11 @@
           <th>BDC</th>
           <th>DEPOT</th>
           <th>Qty</th>
-          <th>P‑BDC</th>
-          <th>S‑BDC</th>
-          <th>P‑Tax</th>
-          <th>S‑Tax</th>
-          <th>Tax (P+S)</th>
+          <th>P-BDC</th>
+          <th>S-BDC</th>
+          <th>P-Tax</th>
+          <th>S-Tax</th>
+          <th>S-Tax + S-BDC</th>
           <th><i class="bi bi-cash-coin"></i><br>Margin</th>
           <th>Returns</th>
           <th>Total Debt</th>
@@ -76,7 +76,7 @@
       </thead>
       <tbody>
         {% for order in orders %}
-        {% set total_tax = (order.p_tax or 0) + (order.s_tax or 0) %}
+        {% set s_component_total = (order.s_tax or 0) + (order.s_bdc_omc or 0) %}
         {% set left_amt = (order.total_debt or 0) - (order.amount_paid or 0) %}
         <tr>
           <td>{{ order.date.strftime('%d-%b-%Y') if order.date else '-' }}</td>
@@ -97,7 +97,7 @@
           <td>{{ "%.2f" % (order.s_bdc_omc or 0) }}</td>
           <td>{{ "%.2f" % (order.p_tax or 0) }}</td>
           <td>{{ "%.2f" % (order.s_tax or 0) }}</td>
-          <td>{{ "%.2f" % total_tax }}</td>
+          <td>{{ "%.2f" % s_component_total }}</td>
           <td>{{ "%.2f" % (order.margin or 0) }}</td>
           <td>{{ "%.2f" % (order.returns or 0) }}</td>
           <td>{{ "%.2f" % (order.total_debt or 0) }}</td>
@@ -179,7 +179,7 @@
             modifier: { page: 'all', search: 'applied' },
             columns: ':visible:not(.no-export)',
             stripHtml: true,
-            format: { body: function (data, row, column, node) {
+            format: { body: function (data) {
               const tmp = document.createElement('div');
               tmp.innerHTML = data;
               return (tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
@@ -218,10 +218,10 @@
         }
       ],
 
-      // 🔧 NEW: normalize search/sort to the cell's plain text (fixes filters on link/badge columns)
+      // Normalize search/sort to the cell's plain text (fixes filters on link/badge columns)
       columnDefs: [{
         targets: '_all',
-        render: function (data, type, row, meta) {
+        render: function (data, type) {
           if (type === 'filter' || type === 'sort') {
             const tmp = document.createElement('div');
             tmp.innerHTML = data == null ? '' : String(data);
@@ -239,8 +239,8 @@
       const header = $(column.header()).text().trim();
       const $wrap = $(`
         <div class="col-6 col-md-3 col-lg-2">
-          <select class="form-select form-select-sm" title="${header}">
-            <option value="">All ${header}</option>
+          <select class="form-select form-select-sm" title="\${header}">
+            <option value="">All \${header}</option>
           </select>
         </div>
       `).appendTo('#filtersRow');
