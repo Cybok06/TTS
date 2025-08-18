@@ -26,6 +26,12 @@
     .table thead th { white-space: nowrap; }
     .filter-chip { background:#eef2ff; color:#3b82f6; border-radius:999px; padding:.25rem .6rem; font-size:.8rem; }
     .btn-icon { display:flex; align-items:center; gap:.4rem; }
+    .muted-kv { font-size:.85rem; color:#6c757d; }
+    .muted-kv .v { color:#111; font-weight:600; }
+    .pill { border-radius:999px; padding:.15rem .5rem; font-size:.8rem; }
+    .pill-info { background:#edf2ff; color:#3b5bdb; }
+    .pill-warn { background:#fff4e6; color:#d9480f; }
+    .pill-ok { background:#e6fcf5; color:#0ca678; }
   </style>
 </head>
 <body>
@@ -71,7 +77,7 @@
     </div>
   </div>
 
-  <!-- OMC cards: only show when total > 0 (backend already filtered) -->
+  <!-- OMC cards -->
   {% if omc_cards and omc_cards|length > 0 %}
   <div class="mb-4">
     <div class="d-flex align-items-center justify-content-between">
@@ -90,7 +96,6 @@
               <div class="fw-semibold">{{ c.omc }}</div>
               <div class="text-muted small">Total Paid</div>
             </div>
-            <!-- Front-end PDF for this OMC -->
             <button class="btn btn-sm btn-outline-secondary btn-icon export-omc" type="button"
                     data-omc="{{ c.omc }}">
               <i class="bi bi-filetype-pdf"></i> PDF
@@ -110,7 +115,7 @@
     <div class="card-body">
       <div class="d-flex justify-content-between align-items-center mb-2">
         <h5 class="m-0"><i class="bi bi-exclamation-circle text-warning me-2"></i>Unpaid S-Tax Orders</h5>
-        <span class="text-muted small">Due = s-price × quantity</span>
+        <span class="text-muted small">Due = s-tax per L × quantity</span>
       </div>
 
       <div class="table-responsive">
@@ -120,7 +125,7 @@
               <th>OMC</th>
               <th>Order ID</th>
               <th class="text-end">Quantity</th>
-              <th class="text-end">S-Price (GH₵)</th>
+              <th class="text-end">S-Tax / L (GH₵)</th>
               <th class="text-end">Due Amount (GH₵)</th>
               <th>Status</th>
               <th class="text-end">Action</th>
@@ -135,16 +140,20 @@
                 <td class="text-end">{{ r.quantity_fmt }}</td>
                 <td class="text-end">{{ r.s_price_fmt }}</td>
                 <td class="text-end">GH₵ {{ r.due_amount_fmt }}</td>
-                <td><span class="badge text-bg-{{ r.payment_badge }}">{{ r.payment_status }}</span></td>
+                <td>
+                  <span class="badge text-bg-{{ r.payment_badge }}">{{ r.payment_status }}</span>
+                </td>
                 <td class="text-end">
+                  <!-- NOTE: data-paid defaults to 0 for now; once backend adds it, the live balance will use it -->
                   <button class="btn btn-primary btn-sm"
                           data-order-oid="{{ r._id }}"
                           data-order-id="{{ r.order_id }}"
                           data-omc="{{ r.omc }}"
                           data-due="{{ r.due_amount_fmt }}"
+                          data-paid="{{ r.already_paid_fmt or '0.00' }}"
                           data-bs-toggle="modal"
                           data-bs-target="#payModal">
-                    <i class="bi bi-cash-coin me-1"></i> Mark Paid
+                    <i class="bi bi-cash-coin me-1"></i> Pay / Top-up
                   </button>
                 </td>
               </tr>
@@ -169,7 +178,6 @@
         <h5 class="m-0"><i class="bi bi-journal-check me-2"></i>Paid S-Tax</h5>
         <div class="d-flex align-items-center gap-2">
           <div class="filter-chip">Current total (filtered): <strong>GH₵ {{ total_paid_sum }}</strong></div>
-          <!-- Export current table (with filters applied) -->
           <button id="exportPdfFiltered" type="button" class="btn btn-outline-danger btn-sm btn-icon">
             <i class="bi bi-filetype-pdf"></i> Export PDF (Filtered)
           </button>
@@ -376,8 +384,7 @@
         4: { cellWidth: 220 },
         5: { cellWidth: 110 },
       },
-      didDrawPage: function (data) {
-        // Page number footer
+      didDrawPage: function () {
         const pageCount = doc.getNumberOfPages();
         const str = `Page ${doc.internal.getCurrentPageInfo().pageNumber} of ${pageCount}`;
         doc.setFontSize(9);
@@ -397,7 +404,6 @@
 
   // Export buttons
   document.getElementById("exportPdfFiltered")?.addEventListener("click", () => {
-    // Build a nice suffix from current filters (optional)
     const f = Object.fromEntries(new FormData(document.getElementById("filtersForm")).entries());
     let bits = [];
     if (f.omc) bits.push(`OMC: ${f.omc}`);
@@ -415,29 +421,74 @@
     });
   });
 
-  // Optional: export all (cards header button) == current filtered table, not per OMC
   document.getElementById("exportPdfAllCards")?.addEventListener("click", () => exportPaidPDF());
 
-  // ===== Pay modal wiring =====
+  // ===== Pay modal wiring (partial-pay enabled) =====
   const payModal = document.getElementById('payModal');
+  const remainBadge = () => document.getElementById('pay-remaining-badge');
+  const paidBadge = () => document.getElementById('pay-paid-badge');
+  const dueBadge = () => document.getElementById('pay-due-badge');
+
+  function computeRemaining(due, alreadyPaid, thisPay) {
+    const left = Math.max(0, (due - alreadyPaid) - thisPay);
+    return left;
+  }
+
+  function updateBadges() {
+    const due = parseFloat(document.getElementById('pay-due').value || '0');
+    const alreadyPaid = parseFloat(document.getElementById('pay-already').value || '0');
+    const thisPay = parseFloat(document.getElementById('pay-amount').value || '0');
+    const rem = computeRemaining(due, alreadyPaid, thisPay);
+
+    dueBadge().textContent = `Due: GH₵ ${toMoney(due)}`;
+    paidBadge().textContent = `Already paid: GH₵ ${toMoney(alreadyPaid)}`;
+    remainBadge().textContent = `Remaining after this: GH₵ ${toMoney(rem)}`;
+
+    // Color based on remaining
+    remainBadge().classList.remove('pill-ok','pill-warn');
+    remainBadge().classList.add(rem === 0 ? 'pill-ok' : 'pill-warn');
+  }
+
   if (payModal) {
     payModal.addEventListener('show.bs.modal', function (ev) {
       const btn = ev.relatedTarget;
+      const dueTxt = (btn.getAttribute('data-due') || '0').replace(/,/g,'');
+      const paidTxt = (btn.getAttribute('data-paid') || '0').replace(/,/g,'');
+
       document.getElementById('pay-order-oid').value = btn.getAttribute('data-order-oid');
       document.getElementById('pay-order-id').value = btn.getAttribute('data-order-id');
       document.getElementById('pay-omc').value = btn.getAttribute('data-omc');
-      document.getElementById('pay-amount').value = btn.getAttribute('data-due').replace(/,/g,'');
+      document.getElementById('pay-due').value = parseMoney(dueTxt).toFixed(2);
+      document.getElementById('pay-already').value = parseMoney(paidTxt).toFixed(2);
+
+      // Default to outstanding as the suggested amount (can be edited for partial)
+      const outstanding = Math.max(0, parseMoney(dueTxt) - parseMoney(paidTxt));
+      document.getElementById('pay-amount').value = outstanding.toFixed(2);
+
       const today = new Date().toISOString().slice(0,10);
       document.getElementById('pay-date').value = today;
+
+      updateBadges();
     });
   }
 
-  // ===== Submit forms (unchanged) =====
+  // Amount changes => live remaining
+  document.getElementById('pay-amount')?.addEventListener('input', updateBadges);
+
+  // ===== Submit forms (partial pay – backend will be adjusted) =====
   const payForm = document.getElementById("pay-form");
   if (payForm) {
     payForm.addEventListener("submit", function (e) {
       e.preventDefault();
       const fd = new FormData(e.target);
+
+      // Allow any amount > 0
+      const amount = parseFloat(fd.get("amount") || "0");
+      if (!(amount > 0)) {
+        alert("Amount must be greater than 0");
+        return;
+      }
+
       fetch("/tax/pay", { method: "POST", body: fd })
         .then(r => r.json())
         .then(data => {
@@ -479,26 +530,53 @@
   }
 </script>
 
-<!-- Record S-Tax Payment Modal -->
+<!-- Record S-Tax Payment Modal (now supports partial) -->
 <div class="modal fade" id="payModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form id="pay-form" class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Record S-Tax Payment</h5>
+        <h5 class="modal-title">Record S-Tax Payment (Partial Allowed)</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body row g-2">
         <input type="hidden" name="order_oid" id="pay-order-oid">
+        <input type="hidden" id="pay-due">
+        <input type="hidden" id="pay-already">
+
+        <div class="col-12">
+          <div class="d-flex flex-wrap gap-2">
+            <span id="pay-due-badge" class="pill pill-info">Due: GH₵ 0.00</span>
+            <span id="pay-paid-badge" class="pill pill-info">Already paid: GH₵ 0.00</span>
+            <span id="pay-remaining-badge" class="pill pill-warn">Remaining after this: GH₵ 0.00</span>
+          </div>
+        </div>
+
         <div class="col-12"><label class="form-label">OMC</label><input type="text" class="form-control" id="pay-omc" readonly></div>
         <div class="col-6"><label class="form-label">Order ID</label><input type="text" class="form-control" id="pay-order-id" readonly></div>
         <div class="col-6"><label class="form-label">Payment Date</label><input type="date" class="form-control" name="payment_date" id="pay-date" required></div>
-        <div class="col-6"><label class="form-label">Amount (GH₵)</label><input type="number" step="0.01" class="form-control" name="amount" id="pay-amount" required><div class="form-text">Must cover S-Tax due</div></div>
-        <div class="col-6"><label class="form-label">Reference (Receipt/Txn ID)</label><input type="text" class="form-control" name="reference" id="pay-ref" placeholder="e.g. RCPT-12345"></div>
-        <div class="col-12"><label class="form-label">Paid By</label><input type="text" class="form-control" name="paid_by" id="pay-by" required></div>
+
+        <div class="col-6">
+          <label class="form-label">Amount (GH₵)</label>
+          <input type="number" step="0.01" class="form-control" name="amount" id="pay-amount" required>
+          <div class="form-text">Partial payment allowed. Remaining will stay as balance.</div>
+        </div>
+
+        <div class="col-6">
+          <label class="form-label">Reference (Receipt/Txn ID)</label>
+          <input type="text" class="form-control" name="reference" id="pay-ref" placeholder="e.g. RCPT-12345">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Paid By</label>
+          <input type="text" class="form-control" name="paid_by" id="pay-by" required>
+        </div>
+
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" type="submit"><i class="bi bi-check2-circle me-1"></i> Save Payment</button>
+        <button class="btn btn-primary" type="submit">
+          <i class="bi bi-check2-circle me-1"></i> Save Payment
+        </button>
       </div>
     </form>
   </div>
