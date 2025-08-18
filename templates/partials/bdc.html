@@ -1,70 +1,94 @@
 <div class="container py-4">
-  <!-- 🔹 Title & New Button -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h4 class="fw-bold text-primary">💼 BDC Accounts</h4>
-    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addBDCSection">
-      ➕ New BDC
-    </button>
+  <!-- 🔹 Title, New Button & Search -->
+  <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+    <h4 class="fw-bold text-primary mb-0">💼 BDC Accounts</h4>
+
+    <div class="d-flex align-items-center gap-2 ms-md-auto">
+      <div class="input-group">
+        <input id="bdc-search-input" type="search" class="form-control" placeholder="Search name, phone, location, rep…" />
+        <button id="bdc-search-btn" class="btn btn-outline-primary">Search</button>
+        <button id="bdc-clear-btn" class="btn btn-outline-secondary">Reset</button>
+      </div>
+      <button class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#addBDCSection">
+        ➕ New BDC
+      </button>
+    </div>
   </div>
 
   <!-- 🔹 Register Form -->
-<div id="addBDCSection" class="collapse mb-4">
-  <div class="card shadow-sm border-0">
-    <div class="card-body">
-      <h6 class="mb-3 fw-semibold">Register New BDC</h6>
-      <div class="row g-3">
-        <!-- BDC Details -->
-        <div class="col-md-4">
-          <input type="text" id="bdc-name" class="form-control" placeholder="Enter BDC Name" />
-        </div>
-        <div class="col-md-4">
-          <input type="text" id="bdc-phone" class="form-control" placeholder="Phone Number" />
-        </div>
-        <div class="col-md-4">
-          <input type="text" id="bdc-location" class="form-control" placeholder="Location" />
-        </div>
+  <div id="addBDCSection" class="collapse mb-4">
+    <div class="card shadow-sm border-0">
+      <div class="card-body">
+        <h6 class="mb-3 fw-semibold">Register New BDC</h6>
+        <div class="row g-3">
+          <!-- BDC Details -->
+          <div class="col-md-4">
+            <input type="text" id="bdc-name" class="form-control" placeholder="Enter BDC Name" />
+          </div>
+          <div class="col-md-4">
+            <input type="text" id="bdc-phone" class="form-control" placeholder="Phone Number" />
+          </div>
+          <div class="col-md-4">
+            <input type="text" id="bdc-location" class="form-control" placeholder="Location" />
+          </div>
 
-        <!-- Rep Details -->
-        <div class="col-md-6">
-          <input type="text" id="bdc-rep-name" class="form-control" placeholder="Rep Name" />
-        </div>
-        <div class="col-md-6">
-          <input type="text" id="bdc-rep-phone" class="form-control" placeholder="Rep Phone" />
-        </div>
+          <!-- Rep Details -->
+          <div class="col-md-6">
+            <input type="text" id="bdc-rep-name" class="form-control" placeholder="Rep Name" />
+          </div>
+          <div class="col-md-6">
+            <input type="text" id="bdc-rep-phone" class="form-control" placeholder="Rep Phone" />
+          </div>
 
-        <!-- Submit Button -->
-        <div class="col-12 text-end">
-          <button class="btn btn-primary px-4" onclick="addBDC()">Create BDC</button>
+          <!-- Submit Button -->
+          <div class="col-12 text-end">
+            <button class="btn btn-primary px-4" onclick="addBDC()">Create BDC</button>
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
+  <!-- 🔹 Results Summary -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <small id="bdc-results-summary" class="text-muted"></small>
+  </div>
 
-  <!-- 🔹 BDC Cards List -->
+  <!-- 🔹 BDC Cards List (server seeds as data-*; JS re-renders) -->
   <div class="row" id="bdc-list">
     {% for bdc in bdcs %}
-    <div class="col-sm-6 col-md-4 col-lg-3 mb-4">
-      <a href="/bdc/profile/{{ bdc._id }}" class="text-decoration-none">
-        <div class="bdc-card shadow-sm h-100">
-          <div class="bdc-card-bg"></div>
-          <div class="bdc-card-header text-white text-center py-3 position-relative">
-            <h5 class="mb-1 fw-bold">{{ bdc.name }}</h5>
-            <small class="text-white-50">Bulk Distributor</small>
+      <div class="col-sm-6 col-md-4 col-lg-3 mb-4 bdc-item"
+           data-id="{{ bdc._id }}"
+           data-name="{{ (bdc.name or '')|e }}"
+           data-phone="{{ (bdc.phone or '')|e }}"
+           data-location="{{ (bdc.location or '')|e }}"
+           data-rep-name="{{ (bdc.rep_name or '')|e }}"
+           data-rep-phone="{{ (bdc.rep_phone or '')|e }}"
+           data-balance="{{ '%.2f'|format((bdc.balance or 0)|float) }}">
+        <a href="/bdc/profile/{{ bdc._id }}" class="text-decoration-none">
+          <div class="bdc-card shadow-sm h-100">
+            <div class="bdc-card-bg"></div>
+            <div class="bdc-card-header text-white text-center py-3 position-relative">
+              <h5 class="mb-1 fw-bold">{{ bdc.name }}</h5>
+              <small class="text-white-50">Bulk Distributor</small>
+            </div>
+            <div class="bdc-card-body p-3 position-relative">
+              <p class="mb-1"><i class="bi bi-telephone-fill me-2 text-muted"></i><strong>{{ bdc.phone or '—' }}</strong></p>
+              <p class="mb-1"><i class="bi bi-geo-alt-fill me-2 text-muted"></i>{{ bdc.location or '—' }}</p>
+              <p class="mb-0"><i class="bi bi-cash-stack me-2 text-muted"></i>
+                <span class="text-success fw-semibold">GHS {{ '%.2f'|format((bdc.balance or 0)|float) }}</span>
+              </p>
+            </div>
           </div>
-          <div class="bdc-card-body p-3 position-relative">
-            <p class="mb-1"><i class="bi bi-telephone-fill me-2 text-muted"></i><strong>{{ bdc.phone }}</strong></p>
-            <p class="mb-1"><i class="bi bi-geo-alt-fill me-2 text-muted"></i>{{ bdc.location }}</p>
-            <p class="mb-0"><i class="bi bi-cash-stack me-2 text-muted"></i>
-              <span class="text-success fw-semibold">GHS {{ '%.2f' | format(bdc.balance or 0) }}</span>
-            </p>
-          </div>
-        </div>
-      </a>
-    </div>
+        </a>
+      </div>
     {% endfor %}
   </div>
+
+  <!-- 🔹 Pagination -->
+  <nav aria-label="BDC pagination" class="mt-3">
+    <ul id="bdc-pagination" class="pagination justify-content-center mb-0"></ul>
+  </nav>
 </div>
 
 <!-- 🔸 Styles -->
@@ -76,37 +100,19 @@
     background: #ffffff;
     position: relative;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border: 1px solid #eef2f7;
   }
-
-  .bdc-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
-  }
-
+  .bdc-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,.08); }
   .bdc-card-header {
     background: linear-gradient(135deg, #0d6efd, #4facfe);
-    border-top-left-radius: 1rem;
-    border-top-right-radius: 1rem;
-    z-index: 1;
+    border-top-left-radius: 1rem; border-top-right-radius: 1rem; z-index: 1;
   }
-
-  .bdc-card-bg {
-    position: absolute;
-    inset: 0;
-    background-image: url('https://www.transparenttextures.com/patterns/cubes.png');
-    opacity: 0.04;
-    z-index: 0;
-  }
-
-  .bdc-card-body {
-    font-size: 0.9rem;
-    z-index: 1;
-  }
-
-  .bdc-card-body i {
-    font-size: 0.9rem;
-  }
+  .bdc-card-bg { position: absolute; inset: 0; background-image:url('https://www.transparenttextures.com/patterns/cubes.png'); opacity:.04; z-index:0; }
+  .bdc-card-body { font-size: .9rem; z-index:1; }
+  .bdc-card-body i { font-size: .9rem; }
+  .pagination .page-link { border-radius: .5rem; }
 </style>
+
 <!-- ✅ Success Modal -->
 <div class="modal fade" id="bdcSuccessModal" tabindex="-1" aria-labelledby="bdcSuccessModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -123,8 +129,154 @@
   </div>
 </div>
 
-
 <script>
+  // ===== Build data from server-rendered data-* attributes (no JSON/Jinja pitfalls) =====
+  const seedNodes = Array.from(document.querySelectorAll('.bdc-item'));
+  const bdcsData = seedNodes.map(n => ({
+    id: n.dataset.id || '',
+    name: n.dataset.name || '',
+    phone: n.dataset.phone || '',
+    location: n.dataset.location || '',
+    rep_name: n.dataset.repName || '',
+    rep_phone: n.dataset.repPhone || '',
+    balance: Number(n.dataset.balance || 0)
+  }));
+
+  // After seeding, we'll let JS fully control rendering:
+  const containerRow = document.getElementById('bdc-list');
+  containerRow.innerHTML = '';
+
+  // ===== Pagination + Search state =====
+  const PAGE_SIZE = 10;
+  let currentPage = 1;
+  let currentQuery = '';
+  let filtered = [...bdcsData];
+
+  const $list = containerRow;
+  const $pager = document.getElementById('bdc-pagination');
+  const $summary = document.getElementById('bdc-results-summary');
+  const $q = document.getElementById('bdc-search-input');
+  const $searchBtn = document.getElementById('bdc-search-btn');
+  const $clearBtn = document.getElementById('bdc-clear-btn');
+
+  function fmtMoney(v) {
+    const n = Number(v || 0);
+    return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function applySearch() {
+    const q = (currentQuery || '').trim().toLowerCase();
+    if (!q) {
+      filtered = [...bdcsData];
+    } else {
+      filtered = bdcsData.filter(x =>
+        [x.name, x.phone, x.location, x.rep_name, x.rep_phone]
+          .filter(Boolean)
+          .some(field => String(field).toLowerCase().includes(q))
+      );
+    }
+    currentPage = 1;
+    render();
+  }
+
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"'`=\/]/g, c =>
+      ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','`':'&#96;','=':'&#61;','/':'&#47;'}[c])
+    );
+  }
+
+  function buildCard(item) {
+    const profileUrl = `/bdc/profile/${item.id}`;
+    return `
+      <div class="col-sm-6 col-md-4 col-lg-3 mb-4">
+        <a href="${profileUrl}" class="text-decoration-none">
+          <div class="bdc-card shadow-sm h-100">
+            <div class="bdc-card-bg"></div>
+            <div class="bdc-card-header text-white text-center py-3 position-relative">
+              <h5 class="mb-1 fw-bold">${escapeHtml(item.name || '—')}</h5>
+              <small class="text-white-50">Bulk Distributor</small>
+            </div>
+            <div class="bdc-card-body p-3 position-relative">
+              <p class="mb-1"><i class="bi bi-telephone-fill me-2 text-muted"></i><strong>${escapeHtml(item.phone || '—')}</strong></p>
+              <p class="mb-1"><i class="bi bi-geo-alt-fill me-2 text-muted"></i>${escapeHtml(item.location || '—')}</p>
+              <p class="mb-0"><i class="bi bi-cash-stack me-2 text-muted"></i>
+                <span class="text-success fw-semibold">GHS ${fmtMoney(item.balance)}</span>
+              </p>
+            </div>
+          </div>
+        </a>
+      </div>`;
+  }
+
+  function renderList() {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const pageItems = filtered.slice(start, start + PAGE_SIZE);
+    $list.innerHTML = pageItems.length
+      ? pageItems.map(buildCard).join('')
+      : `<div class="col-12"><div class="text-center text-muted py-5">No BDCs found.</div></div>`;
+
+    const total = filtered.length;
+    const first = total ? start + 1 : 0;
+    const last = Math.min(start + PAGE_SIZE, total);
+    const queryTxt = currentQuery ? ` for "<span class="fw-semibold">${escapeHtml(currentQuery)}</span>"` : '';
+    $summary.innerHTML = `Showing <strong>${first}</strong>–<strong>${last}</strong> of <strong>${total}</strong>${queryTxt}.`;
+  }
+
+  function renderPager() {
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const disabledPrev = currentPage === 1 ? ' disabled' : '';
+    const disabledNext = currentPage === totalPages ? ' disabled' : '';
+
+    const windowSize = 5, half = Math.floor(windowSize / 2);
+    let start = Math.max(1, currentPage - half);
+    let end = Math.min(totalPages, start + windowSize - 1);
+    start = Math.max(1, Math.min(start, end - windowSize + 1));
+
+    let pagesHtml = '';
+    for (let p = start; p <= end; p++) {
+      pagesHtml += `
+        <li class="page-item${p === currentPage ? ' active' : ''}">
+          <button class="page-link" data-page="${p}" aria-label="Go to page ${p}">${p}</button>
+        </li>`;
+    }
+
+    $pager.innerHTML = `
+      <li class="page-item${disabledPrev}">
+        <button class="page-link" data-page="prev" aria-label="Previous">«</button>
+      </li>
+      ${start > 1 ? `<li class="page-item"><button class="page-link" data-page="1">1</button></li><li class="page-item disabled"><span class="page-link">…</span></li>` : ''}
+      ${pagesHtml}
+      ${end < totalPages ? `<li class="page-item disabled"><span class="page-link">…</span></li><li class="page-item"><button class="page-link" data-page="${totalPages}">${totalPages}</button></li>` : ''}
+      <li class="page-item${disabledNext}">
+        <button class="page-link" data-page="next" aria-label="Next">»</button>
+      </li>`;
+  }
+
+  function render() { renderList(); renderPager(); }
+
+  // Pagination clicks
+  document.getElementById('bdc-pagination').addEventListener('click', (e) => {
+    const btn = e.target.closest('button.page-link'); if (!btn) return;
+    const val = btn.getAttribute('data-page');
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    if (val === 'prev' && currentPage > 1) currentPage--;
+    else if (val === 'next' && currentPage < totalPages) currentPage++;
+    else {
+      const num = parseInt(val, 10);
+      if (!isNaN(num)) currentPage = num;
+    }
+    render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  // Search controls
+  document.getElementById('bdc-search-btn').addEventListener('click', () => { currentQuery = $q.value; applySearch(); });
+  document.getElementById('bdc-clear-btn').addEventListener('click', () => { $q.value=''; currentQuery=''; applySearch(); });
+  $q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { currentQuery = $q.value; applySearch(); } });
+
+  // Initial render
+  render();
+
+  // ===== Create BDC (unchanged) =====
   function addBDC() {
     const name = document.getElementById('bdc-name').value.trim();
     const phone = document.getElementById('bdc-phone').value.trim();
@@ -139,22 +291,13 @@
     fetch('/bdc/add', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        phone,
-        location,
-        rep_name,
-        rep_phone
-      })
+      body: JSON.stringify({ name, phone, location, rep_name, rep_phone })
     })
     .then(res => res.json())
     .then(data => {
       if (data.status === 'success') {
-        // ✅ Show success modal instead of alert
         const modal = new bootstrap.Modal(document.getElementById('bdcSuccessModal'));
         modal.show();
-
-        // Optional: reset form fields
         document.getElementById('bdc-name').value = '';
         document.getElementById('bdc-phone').value = '';
         document.getElementById('bdc-location').value = '';
@@ -170,4 +313,3 @@
     });
   }
 </script>
-
