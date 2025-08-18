@@ -23,6 +23,8 @@ from truck import truck_bp
 from truck_debtors import truck_debtors_bp  # ✅ NEW
 from admin_truck_payments import admin_truck_payments_bp  # ✅ NEW
 from share_links import shared_bp
+from omc import omc_bp
+
 
 
 # === Admin Features ===
@@ -70,6 +72,8 @@ app.register_blueprint(admin_truck_payments_bp)  # ✅ Registered
 app.register_blueprint(bank_profile_bp)  # ✅ Register bank profile route
 app.register_blueprint(reports_bp)
 app.register_blueprint(shared_bp)
+app.register_blueprint(omc_bp)
+
 
 
 # Admin
