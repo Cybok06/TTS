@@ -51,11 +51,6 @@ def _order_stax_due(order: dict) -> float:
     stax = _stax_per_l(order)
     return round(q * stax, 2)
 
-def _is_paid(order: dict) -> bool:
-    v1 = str(order.get("s_tax_payment", "")).lower()
-    v2 = str(order.get("s-tax-payment", "")).lower()
-    return v1 == "paid" or v2 == "paid"
-
 def _parse_date_start(s):
     if not s:
         return None
@@ -77,48 +72,65 @@ def _paid_type_query():
     # robust & index-friendly: match s-tax, s_tax, s tax (any case)
     return {"type": {"$regex": r"^s[\s_-]*tax$", "$options": "i"}}
 
+def _paid_sum_for_order(oid: ObjectId) -> float:
+    """Sum of all S-Tax payments recorded for this order."""
+    try:
+        pipe = [
+            {"$match": {"order_oid": oid, **_paid_type_query()}},
+            {"$group": {"_id": None, "total": {"$sum": "$amount"}}},
+        ]
+        row = next(tax_col.aggregate(pipe), None)
+        return float(row.get("total", 0.0)) if row else 0.0
+    except Exception:
+        return 0.0
+
 # ---------- views ----------
 @tax_bp.route("/tax", methods=["GET"])
 def tax_dashboard():
-    # ===== UNPAID =====
-    # S-Tax eligible if: explicit type 's_tax' OR 'combo' OR has s_tax/s-tax > 0
-    unpaid_query = {
-        "$and": [
-            {"$or": [
-                {"order_type": "s_tax"},
-                {"order_type": "combo"},
-                {"s_tax": {"$gt": 0}},
-                {"s-tax": {"$gt": 0}},
-            ]},
-            {"$or": [{"s_tax_payment": {"$exists": False}}, {"s_tax_payment": {"$ne": "paid"}}]},
-            {"$or": [{"s-tax-payment": {"$exists": False}}, {"s-tax-payment": {"$ne": "paid"}}]},
-        ],
+    # ===== UNPAID (and partially paid) =====
+    # Eligible orders: explicit type 's_tax' OR 'combo' OR has s_tax/s-tax > 0
+    base_query = {
+        "$or": [
+            {"order_type": "s_tax"},
+            {"order_type": "combo"},
+            {"s_tax": {"$gt": 0}},
+            {"s-tax": {"$gt": 0}},
+        ]
     }
     projection = {
         "_id": 1, "order_id": 1, "omc": 1, "quantity": 1,
         "s_tax": 1, "s-tax": 1,
         "due_date": 1, "date": 1,
+        # We intentionally ignore legacy s_tax_payment flags here and compute balance
     }
-    unpaid_orders = list(orders_col.find(unpaid_query, projection).sort("date", -1))
+    eligible_orders = list(orders_col.find(base_query, projection).sort("date", -1))
 
     unpaid_rows, total_unpaid_sum = [], 0.0
-    for o in unpaid_orders:
+    for o in eligible_orders:
+        oid = o.get("_id")
         due = _order_stax_due(o)  # s_tax × qty
-        total_unpaid_sum += due
-        unpaid_rows.append({
-            "_id": _str_oid(o.get("_id")),
-            "order_id": o.get("order_id", "—"),
-            "omc": o.get("omc", "—"),
-            "due_amount": due,
-            "due_amount_fmt": _fmt(due),
-            "payment_status": "Pending",
-            "payment_badge": "warning",
-            "due_date": o.get("due_date"),
-            "date": o.get("date"),
-            "quantity_fmt": _fmt(_f(o.get("quantity"), 0.0)),
-            # Keep the key name the template expects; now it shows S-Tax per L
-            "s_price_fmt": _fmt(_stax_per_l(o)),
-        })
+        already_paid = _paid_sum_for_order(oid)  # sum of all S-Tax payments
+        remaining = max(0.0, round(due - already_paid, 2))
+
+        # show only those with remaining > 0
+        if remaining > 0:
+            total_unpaid_sum += remaining
+            unpaid_rows.append({
+                "_id": _str_oid(oid),
+                "order_id": o.get("order_id", "—"),
+                "omc": o.get("omc", "—"),
+                "due_amount": remaining,
+                "due_amount_fmt": _fmt(remaining),
+                "payment_status": "Pending" if already_paid == 0 else "Partially Paid",
+                "payment_badge": "warning" if already_paid == 0 else "info",
+                "due_date": o.get("due_date"),
+                "date": o.get("date"),
+                "quantity_fmt": _fmt(_f(o.get("quantity"), 0.0)),
+                # Keep the key name the template expects; now it shows S-Tax per L
+                "s_price_fmt": _fmt(_stax_per_l(o)),
+                # expose already paid for front-end modal
+                "already_paid_fmt": _fmt(already_paid),
+            })
 
     # ===== FILTERS for PAID table =====
     omc_f      = (request.args.get("omc") or "").strip()
@@ -228,6 +240,14 @@ def tax_dashboard():
 
 @tax_bp.route("/tax/pay", methods=["POST"])
 def pay_stax():
+    """
+    Accepts partial payments. Validates:
+    - order exists and is eligible for S-Tax
+    - amount > 0
+    - amount <= remaining
+    Inserts payment and updates order flags when fully paid.
+    Returns JSON with due, already_paid (after), remaining (after).
+    """
     try:
         order_oid = (request.form.get("order_oid") or "").strip()
         amount = _f(request.form.get("amount"))
@@ -252,15 +272,20 @@ def pay_stax():
         if not (is_stax_type or has_stax_value):
             return jsonify({"status": "error", "message": "Order has no S-Tax to pay"}), 400
 
-        if _is_paid(order):
-            return jsonify({"status": "error", "message": "S-Tax already recorded as paid"}), 400
-
         due = _order_stax_due(order)  # s_tax × qty
         if amount <= 0:
             return jsonify({"status": "error", "message": "Amount must be greater than 0"}), 400
-        if amount < due:
-            return jsonify({"status": "error", "message": f"Amount must cover S-Tax due (GH₵ {_fmt(due)})"}), 400
 
+        already_paid_before = _paid_sum_for_order(oid)
+        remaining_before = max(0.0, round(due - already_paid_before, 2))
+        if remaining_before <= 0:
+            # Already fully paid; keep idempotent behavior
+            return jsonify({"status": "error", "message": "S-Tax already fully paid"}), 400
+
+        if amount > remaining_before:
+            return jsonify({"status": "error", "message": f"Amount exceeds remaining balance (GH₵ {_fmt(remaining_before)})"}), 400
+
+        # payment date
         pay_dt = datetime.utcnow()
         if payment_date_str:
             try:
@@ -268,6 +293,7 @@ def pay_stax():
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid payment date"}), 400
 
+        # insert payment
         tax_col.insert_one({
             "type": "S-Tax",
             "amount": round(float(amount), 2),
@@ -280,15 +306,37 @@ def pay_stax():
             "submitted_at": datetime.utcnow()
         })
 
-        orders_col.update_one({"_id": oid}, {"$set": {
-            "s_tax_payment": "paid",
-            "s-tax-payment": "paid",
-            "s_tax_paid_amount": round(float(amount), 2),
+        # recompute totals AFTER insert
+        already_paid_after = _paid_sum_for_order(oid)
+        remaining_after = max(0.0, round(due - already_paid_after, 2))
+
+        # set flags only when fully paid
+        update_doc = {
+            "s_tax_paid_amount": round(float(already_paid_after), 2),
             "s_tax_paid_at": pay_dt,
-            "s_tax_reference": reference or None,
-            "s_tax_paid_by": paid_by or None
-        }})
-        return jsonify({"status": "success"})
+            "s_tax_reference": reference or order.get("s_tax_reference"),  # keep last/any
+            "s_tax_paid_by": paid_by or order.get("s_tax_paid_by"),
+        }
+        if remaining_after <= 0:
+            update_doc.update({
+                "s_tax_payment": "paid",
+                "s-tax-payment": "paid",
+            })
+        else:
+            # ensure flags are not incorrectly set to paid
+            update_doc.update({
+                "s_tax_payment": "partial",
+                "s-tax-payment": "partial",
+            })
+
+        orders_col.update_one({"_id": oid}, {"$set": update_doc})
+
+        return jsonify({
+            "status": "success",
+            "due": round(due, 2),
+            "already_paid": round(already_paid_after, 2),
+            "remaining": round(remaining_after, 2)
+        })
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
