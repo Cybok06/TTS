@@ -13,9 +13,7 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet" />
 
   <style>
-    :root{
-      --ink:#0b1320; --muted:#475569; --line:#e2e8f0; --soft:#f8fafc; --brand:#0d6efd; --ok:#198754;
-    }
+    :root{ --ink:#0b1320; --muted:#475569; --line:#e2e8f0; --soft:#f8fafc; --brand:#0d6efd; --ok:#198754; }
     html,body{height:100%}
     body{
       background: radial-gradient(1200px 800px at 10% -10%, #eef2f7 0%, #ffffff 60%) no-repeat,
@@ -27,22 +25,14 @@
     .card-title{font-size:1.2rem;font-weight:650}
     .summary-value{font-size:1.15rem;color:var(--ok);font-weight:700}
     .filter-card{background:#fff;border:1px solid var(--line); border-radius:12px; padding:18px}
-    .export-toolbar{
-      gap:.5rem; flex-wrap:wrap
-    }
+    .export-toolbar{ gap:.5rem; flex-wrap:wrap }
     .table-wrap{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
-    table thead th{
-      background:#f8fafc; position:sticky; top:0; z-index:2;
-      border-bottom:1px solid var(--line);
-    }
+    table thead th{ background:#f8fafc; position:sticky; top:0; z-index:2; border-bottom:1px solid var(--line); }
     .table> :not(caption)>*>*{vertical-align:middle}
     .table-striped>tbody>tr:nth-of-type(odd)>*{background-color:#fbfdff}
-    .badge-soft{
-      background:#eef2ff;border:1px solid #dbe5ff;color:#274690;
-    }
+    .badge-soft{ background:#eef2ff;border:1px solid #dbe5ff;color:#274690; }
     .back-btn{margin-bottom:1rem}
     .meta-line{color:var(--muted); font-size:.9rem}
-    /* Print: hide controls, make table full-width */
     @media print{
       .no-print{display:none !important}
       body{background:#fff}
@@ -98,7 +88,10 @@
           <div class="meta-line"><strong>Branch:</strong> {{ bank.branch }}</div>
         </div>
         <div class="text-md-end">
-          <div class="summary-value">Total Received: GHS {{ '%.2f'|format(total_received) }}</div>
+          <!-- summary total gets formatted by JS -->
+          <div class="summary-value" id="summaryTotal" data-val="{{ '%.2f'|format(total_received) }}">
+            Total Received: GHS {{ '%.2f'|format(total_received) }}
+          </div>
           {% if start_date or end_date %}
           <div class="meta-line mt-1">
             Period:
@@ -163,7 +156,8 @@
           <tr>
             <td>{{ loop.index }}</td>
             <td>{{ pay.date.strftime('%Y-%m-%d %H:%M') }}</td>
-            <td data-num="{{ '%.2f'|format(pay.amount) }}">{{ '%.2f'|format(pay.amount) }}</td>
+            <!-- raw numeric in data-num; UI gets thousand separators via JS -->
+            <td class="amt" data-num="{{ '%.2f'|format(pay.amount) }}">{{ '%.2f'|format(pay.amount) }}</td>
             <td>{{ pay.account_last4 }}</td>
             <td>
               {% if pay.proof_url %}
@@ -224,14 +218,14 @@
     const rows = Array.from(table.querySelectorAll('tbody tr')).map(tr=>{
       return Array.from(tr.children).map(td=>{
         const text = td.textContent.trim();
-        // Convert numeric strings like 1,234.50 -> 1234.50
+        // Use raw number from data-num for numeric cells
         const numAttr = td.getAttribute('data-num');
-        if(numAttr !== null){
+        if (numAttr !== null){
           const n = parseFloat(numAttr.replace(/,/g,''));
           return isNaN(n) ? text : n;
         }
-        // Remove currency symbol for amount cells when exporting
-        if(/Amount/i.test(headers[2]) && td.cellIndex===2){
+        // Fallback: parse displayed numeric text for amount column
+        if (/Amount/i.test(headers[2]) && td.cellIndex === 2){
           const n = parseFloat(text.replace(/[^\d.-]/g,''));
           return isNaN(n) ? text : n;
         }
@@ -280,7 +274,6 @@
 
     // Table
     const total = document.getElementById('tableTotal')?.getAttribute('data-total') || '';
-    const finalY = doc.lastAutoTable && doc.lastAutoTable.finalY ? doc.lastAutoTable.finalY : 90;
 
     doc.autoTable({
       startY: 100,
@@ -296,7 +289,6 @@
         4: { cellWidth: 120 }
       },
       didDrawPage: (data) => {
-        // Footer
         const pageCount = doc.getNumberOfPages();
         const pageSize = doc.internal.pageSize;
         doc.setFontSize(9);
@@ -310,7 +302,10 @@
     if (total){
       doc.autoTable({
         startY: doc.lastAutoTable.finalY + 6,
-        body: [[{ content: `Total Received`, styles: { fontStyle: 'bold' } }, { content: `GHS ${Number(total).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`, styles:{ halign:'right', fontStyle:'bold' } }]],
+        body: [[
+          { content: `Total Received`, styles: { fontStyle: 'bold' } },
+          { content: `GHS ${Number(total).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2})}`, styles:{ halign:'right', fontStyle:'bold' } }
+        ]],
         theme: 'plain',
         styles: { fontSize: 11, cellPadding: 6 },
         columns: [{ header: '', dataKey: 'label' }, { header: '', dataKey: 'value' }],
@@ -327,14 +322,7 @@
     const { bank, branch, start, end } = getMeta();
     const { headers, rows } = tableToArray('paymentsTable');
     const wsData = [headers, ...rows.map(r=>{
-      // Convert "View" button cell to URL if present
-      return r.map((cell, idx)=>{
-        if (idx === 4) {
-          // Try to pull the URL from the underlying DOM row (more reliable)
-          return ''; // keep simple; Excel doesn't need the link text
-        }
-        return cell;
-      });
+      return r.map((cell, idx)=> (idx === 4 ? '' : cell)); // keep proof column simple
     })];
 
     const wb = XLSX.utils.book_new();
@@ -360,7 +348,7 @@
     saveBlob(csv, 'text/csv;charset=utf-8;', fname);
   }
 
-  // ---------- Init ----------
+  // ---------- Init & UI formatting ----------
   (function init(){
     const hasTable = !!document.getElementById('paymentsTable');
     const btnPDF = document.getElementById('btnExportPDF');
@@ -378,18 +366,27 @@
     if(btnCSV) btnCSV.addEventListener('click', exportCSV);
     if(btnPrint) btnPrint.addEventListener('click', ()=>window.print());
 
-    // Ensure all "Amount" cells are nicely formatted with thousand separators in the UI
-    const amtCells = document.querySelectorAll('#paymentsTable tbody td:nth-child(3)');
-    amtCells.forEach(td=>{
-      const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,''));
-      if(!isNaN(raw)) td.textContent = raw.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+    // Format helper
+    const fmt = v => Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+
+    // ✅ Summary total formatting
+    const summary = document.getElementById('summaryTotal');
+    if(summary){
+      const raw = parseFloat((summary.getAttribute('data-val')||'').replace(/,/g,'')) || 0;
+      summary.textContent = 'Total Received: GHS ' + fmt(raw);
+    }
+
+    // ✅ Format all "Amount (GHS)" cells with thousand separators
+    document.querySelectorAll('#paymentsTable tbody td.amt').forEach(td=>{
+      const raw = parseFloat((td.getAttribute('data-num')||td.textContent).replace(/,/g,'')); 
+      if(!isNaN(raw)) td.textContent = fmt(raw);
     });
 
-    // Footer total formatting (already formatted server-side; keep consistent)
+    // ✅ Footer total formatting
     const t = document.getElementById('tableTotal');
     if(t){
-      const val = parseFloat((t.getAttribute('data-total')||'').replace(/,/g,''));
-      if(!isNaN(val)) t.textContent = 'GHS ' + val.toLocaleString(undefined,{minimumFractionDigits:2, maximumFractionDigits:2});
+      const val = parseFloat((t.getAttribute('data-total')||'').replace(/,/g,'')); 
+      if(!isNaN(val)) t.textContent = 'GHS ' + fmt(val);
     }
   })();
 </script>
