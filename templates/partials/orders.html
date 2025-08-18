@@ -37,7 +37,8 @@
 
 {% if orders %}
   {% for order in orders %}
-    {% set filled = order.total_debt and order.returns %}
+    {# 'filled' now checks expected first, then falls back to legacy returns #}
+    {% set filled = order.total_debt and (order.expected or order.returns) %}
     <div class="card mb-4 shadow-sm">
       <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center flex-wrap gap-2">
@@ -62,6 +63,7 @@
               class="row g-3 order-update-form"
               data-id="{{ order._id }}"
               data-qty="{{ order.quantity|float }}">
+
           <!-- Order Type toggle -->
           <div class="col-12">
             <label class="form-label mb-1 d-flex justify-content-between align-items-center">
@@ -70,8 +72,8 @@
             </label>
             <div class="btn-group btn-group-sm btn-toggle-group" role="group" aria-label="Order Type">
               {% set mode = order.order_type or 'combo' %}
-              <button type="button" class="btn btn-outline-primary mode-btn {% if mode=='s_bdc' %}active{% endif %}" data-mode="s_bdc">S‑BDC</button>
-              <button type="button" class="btn btn-outline-primary mode-btn {% if mode=='s_tax' %}active{% endif %}" data-mode="s_tax">S‑Tax</button>
+              <button type="button" class="btn btn-outline-primary mode-btn {% if mode=='s_bdc' %}active{% endif %}" data-mode="s_bdc">S-BDC</button>
+              <button type="button" class="btn btn-outline-primary mode-btn {% if mode=='s_tax' %}active{% endif %}" data-mode="s_tax">S-Tax</button>
               <button type="button" class="btn btn-outline-primary mode-btn {% if mode=='combo' %}active{% endif %}" data-mode="combo">Combo</button>
             </div>
             <input type="hidden" name="order_type" class="order_type" value="{{ mode }}">
@@ -190,7 +192,7 @@
               </div>
               <div class="col-12 col-sm-6 col-lg-4 d-none payment-amount-wrapper">
                 <input type="number" step="0.01" name="payment_amount" class="form-control"
-                       placeholder="Auto: qty × P‑BDC" />
+                       placeholder="Auto: qty × P-BDC" />
                 <div class="form-text payment-amount-view text-muted"></div>
               </div>
             </div>
@@ -205,7 +207,7 @@
           <!-- Prices -->
           <div class="col-12 col-sm-6 col-lg-4">
             <label class="form-label d-flex justify-content-between align-items-center flex-wrap gap-2">
-              P‑BDC <span class="calc-note">For price margin & payments</span>
+              P-BDC <span class="calc-note">For price margin & payments</span>
               <button type="button" class="btn btn-sm btn-outline-secondary fetch-price-btn"
                       data-product="{{ order.product }}" title="Auto-fill P/S Price">Use Existing Price</button>
             </label>
@@ -214,25 +216,25 @@
           </div>
 
           <div class="col-12 col-sm-6 col-lg-4">
-            <label class="form-label">S‑BDC <span class="calc-note">Used in S‑BDC/Combo debt</span></label>
+            <label class="form-label">S-BDC <span class="calc-note">Used in S-BDC/Combo debt</span></label>
             <input type="number" step="0.01" name="s_bdc_omc" class="form-control s_bdc_input"
                    value="{{ order.s_bdc_omc or '' }}">
           </div>
 
           <!-- Taxes -->
           <div class="col-12 col-sm-6 col-lg-4">
-            <label class="form-label">P‑Tax <span class="calc-note">For tax margin only</span></label>
+            <label class="form-label">P-Tax <span class="calc-note">For tax margin only</span></label>
             <input type="number" step="0.01" name="p_tax" class="form-control p_tax_input"
                    value="{{ order.p_tax or '' }}">
           </div>
 
           <div class="col-12 col-sm-6 col-lg-4">
-            <label class="form-label">S‑Tax <span class="calc-note">Used in S‑Tax/Combo debt</span></label>
+            <label class="form-label">S-Tax <span class="calc-note">Used in S-Tax/Combo debt</span></label>
             <input type="number" step="0.01" name="s_tax" class="form-control s_tax_input"
                    value="{{ order.s_tax or '' }}">
           </div>
 
-          <!-- Derived -->
+          <!-- Derived: Margins & Debt -->
           <div class="col-12 col-md-6 col-lg-4">
             <div class="metric-box">
               <div class="metric-heading">Price Margin (per L)</div>
@@ -261,26 +263,25 @@
             </div>
           </div>
 
-          <!-- RETURNS -->
+          <!-- EXPECTED AMOUNT (replaces "Returns") -->
           <div class="col-12">
             <div class="metric-box">
-              <div class="metric-heading">Returns</div>
+              <div class="metric-heading">Expected Amount from Customer</div>
               <div class="row g-2">
                 <div class="col-12 col-md-4">
-                  <label class="form-label">S‑BDC × Q</label>
-                  <div class="metric-value">GHS <span class="returns_sbdc_display">0.00</span></div>
-                  <input type="hidden" name="returns_sbdc" class="returns_sbdc_input" value="">
+                  <label class="form-label">Total Margin (per L)</label>
+                  <div class="metric-value">GHS <span class="total_margin_per_l_display">0.00</span></div>
+                  <input type="hidden" name="total_margin_per_l" class="total_margin_per_l_input" value="">
                 </div>
-                <div class="col-12 col-md-4">
-                  <label class="form-label">S‑Tax × Q</label>
-                  <div class="metric-value">GHS <span class="returns_stax_display">0.00</span></div>
-                  <input type="hidden" name="returns_stax" class="returns_stax_input" value="">
-                </div>
-                <div class="col-12 col-md-4">
-                  <label class="form-label">Total Returns</label>
-                  <div class="metric-value">GHS <span class="returns_total_display">{{ order.returns or '0.00' }}</span></div>
+                <div class="col-12 col-md-8">
+                  <label class="form-label">Expected = (Price Margin + Tax Margin) × Q</label>
+                  <div class="metric-value">GHS <span class="expected_display">{{ (order.expected or order.returns) or '0.00' }}</span></div>
+                  <!-- NEW canonical field -->
+                  <input type="hidden" name="expected" class="expected_input" value="">
+                  <!-- Backward-compat until backend is updated -->
                   <input type="hidden" name="returns_total" class="returns_total_input" value="">
-                  <input type="hidden" name="returns" class="returns_input" value="{{ order.returns or '' }}">
+                  <input type="hidden" name="returns" class="returns_input" value="">
+                  <small class="calc-note expected-preview">Q = {{ order.quantity|float }} → —</small>
                 </div>
               </div>
             </div>
@@ -331,14 +332,13 @@
 <!-- Scripts -->
 <script>
   // ---------- Helpers ----------
-  function toNum(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
+  function toNum(v){ var n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
   function toFixed2(n){ n = Number(n); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
   function fmt(n){ n = Number(n); return Number.isFinite(n) ? n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'; }
 
   // Enable/disable BDC select
   function setBDCState($form, disabled){
-    const $bdc = $form.find('.bdc-select');
-    // Remove 'required' if disabled; restore when enabled
+    var $bdc = $form.find('.bdc-select');
     if (disabled){
       $bdc.prop('required', false);
       $bdc.val('').trigger('change'); // clear
@@ -347,42 +347,40 @@
       $bdc.prop('disabled', false).removeClass('dimmed');
       $bdc.prop('required', true);
     }
-    // If using Select2, make sure it reflects disabled state
     if ($bdc.hasClass('select2-hidden-accessible')){
       $bdc.trigger('change.select2');
     }
   }
 
-  // Enable/disable + required per order type
+  // Enable/disable + required per order type (no template literals)
   function setModeUI($form, mode){
-    $form.find('.mode-btn').removeClass('active');
-    $form.find(`.mode-btn[data-mode="${mode}"]`).addClass('active');
+    $form.find('.mode-btn').removeClass('active').each(function(){
+      var $btn = $(this);
+      if ($btn.data('mode') === mode){ $btn.addClass('active'); }
+    });
     $form.find('.order_type').val(mode);
 
-    const $p  = $form.find('.p_bdc_input');
-    const $s  = $form.find('.s_bdc_input');
-    const $pt = $form.find('.p_tax_input');
-    const $st = $form.find('.s_tax_input');
+    var $p  = $form.find('.p_bdc_input');
+    var $s  = $form.find('.s_bdc_input');
+    var $pt = $form.find('.p_tax_input');
+    var $st = $form.find('.s_tax_input');
 
-    const on  = (el) => { el.prop('disabled', false).removeClass('dimmed'); };
-    const off = (el) => { el.prop('disabled', true).addClass('dimmed'); };
+    function on(el){ el.prop('disabled', false).removeClass('dimmed'); }
+    function off(el){ el.prop('disabled', true).addClass('dimmed'); }
 
-    [$p,$s,$pt,$st].forEach($el => $el.prop('required', false)); // reset
+    [$p,$s,$pt,$st].forEach(function($el){ $el.prop('required', false); }); // reset
 
     if (mode === 's_tax'){
       off($p); off($s); on($pt); on($st);
       $st.prop('required', true);
-      // NEW: disable BDC when S‑Tax
       setBDCState($form, true);
     } else if (mode === 's_bdc'){
       on($p); on($s); off($pt); off($st);
       $s.prop('required', true);
-      // enable BDC for S‑BDC
       setBDCState($form, false);
     } else { // combo
       on($p); on($s); on($pt); on($st);
       $s.prop('required', true); $st.prop('required', true);
-      // enable BDC for Combo
       setBDCState($form, false);
     }
 
@@ -390,124 +388,125 @@
   }
 
   function computeDebtByMode(mode, s, sTax, q){
-    let amount = 0, label = "—", preview = "—";
+    var amount = 0, label = "—", preview = "—";
     if (mode === 'combo'){
-      const perL = (s > 0 ? s : 0) + (sTax > 0 ? sTax : 0);
+      var perL = (s > 0 ? s : 0) + (sTax > 0 ? sTax : 0);
       amount = perL * q;
-      label = "(S‑BDC + S‑Tax) × Q";
-      preview = `Q = ${q.toLocaleString()} → (${toFixed2(s)} + ${toFixed2(sTax)}) × ${q.toLocaleString()} = ${fmt(amount)}`;
+      label = "(S-BDC + S-Tax) × Q";
+      preview = "Q = " + q.toLocaleString() + " → (" + toFixed2(s) + " + " + toFixed2(sTax) + ") × " + q.toLocaleString() + " = " + fmt(amount);
     } else if (mode === 's_bdc'){
       amount = s * q;
-      label = "S‑BDC × Q";
-      preview = `Q = ${q.toLocaleString()} → ${toFixed2(s)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+      label = "S-BDC × Q";
+      preview = "Q = " + q.toLocaleString() + " → " + toFixed2(s) + " × " + q.toLocaleString() + " = " + fmt(amount);
     } else if (mode === 's_tax'){
       amount = sTax * q;
-      label = "S‑Tax × Q";
-      preview = `Q = ${q.toLocaleString()} → ${toFixed2(sTax)} × ${q.toLocaleString()} = ${fmt(amount)}`;
+      label = "S-Tax × Q";
+      preview = "Q = " + q.toLocaleString() + " → " + toFixed2(sTax) + " × " + q.toLocaleString() + " = " + fmt(amount);
     }
-    return { amount, label, preview };
+    return { amount: amount, label: label, preview: preview };
   }
 
-  // Compute derived values
+  // Compute derived values (margins, debt, expected)
   function computeFormValues($form){
-    const p    = toNum($form.find('.p_bdc_input').val());
-    const s    = toNum($form.find('.s_bdc_input').val());
-    const pTax = toNum($form.find('.p_tax_input').val());
-    const sTax = toNum($form.find('.s_tax_input').val());
-    const q    = toNum($form.data('qty'));
-    const mode = ($form.find('.order_type').val() || 'combo');
+    var p    = toNum($form.find('.p_bdc_input').val());
+    var s    = toNum($form.find('.s_bdc_input').val());
+    var pTax = toNum($form.find('.p_tax_input').val());
+    var sTax = toNum($form.find('.s_tax_input').val());
+    var q    = toNum($form.data('qty'));
+    var mode = ($form.find('.order_type').val() || 'combo');
 
     // margins per L
-    const marginPrice = s - p;       // price margin per L
-    const marginTax   = sTax - pTax; // tax margin per L
+    var marginPrice = s - p;       // price margin per L
+    var marginTax   = sTax - pTax; // tax margin per L
+    var totalMarginPerL = marginPrice + marginTax;
 
-    // returns
-    const returnsSbdc = s * q;       // S‑BDC × Q
-    const returnsStax = sTax * q;    // S‑Tax × Q
-    const returnsTotal = returnsSbdc + returnsStax;
+    // expected amount from customer
+    var expected = totalMarginPerL * q;
 
-    // debt depends on order type
-    const debtObj = computeDebtByMode(mode, s, sTax, q);
+    // debt depends on order type (unchanged)
+    var debtObj = computeDebtByMode(mode, s, sTax, q);
 
     // write raw values to hidden inputs
     $form.find('.margin_input').val(toFixed2(marginPrice));
     $form.find('.margin_tax_input').val(toFixed2(marginTax));
-    $form.find('.returns_sbdc_input').val(toFixed2(returnsSbdc));
-    $form.find('.returns_stax_input').val(toFixed2(returnsStax));
-    $form.find('.returns_total_input').val(toFixed2(returnsTotal));
-    $form.find('.returns_input').val(toFixed2(returnsTotal)); // legacy "returns"
+    $form.find('.total_margin_per_l_input').val(toFixed2(totalMarginPerL));
+
+    $form.find('.expected_input').val(toFixed2(expected));
+
+    // Backward-compat until backend is migrated
+    $form.find('.returns_total_input').val(toFixed2(expected));
+    $form.find('.returns_input').val(toFixed2(expected));
+
     $form.find('.total_debt_input').val(toFixed2(debtObj.amount));
 
     // update formatted display fields
     $form.find('.margin_view').val(fmt(marginPrice));
     $form.find('.margin_tax_view').val(fmt(marginTax));
-    $form.find('.returns_sbdc_display').text(fmt(returnsSbdc));
-    $form.find('.returns_stax_display').text(fmt(returnsStax));
-    $form.find('.returns_total_display').text(fmt(returnsTotal));
+    $form.find('.total_margin_per_l_display').text(fmt(totalMarginPerL));
+    $form.find('.expected_display').text(fmt(expected));
     $form.find('.total_debt_view').val(fmt(debtObj.amount));
 
-    // formula chip + preview
-    $form.find('.debt-formula-chip').text(`Formula: ${debtObj.label}`);
+    // previews
+    $form.find('.debt-formula-chip').text("Formula: " + debtObj.label);
     $form.find('.debt-preview').text(debtObj.preview);
+    $form.find('.expected-preview').text(
+      "Q = " + q.toLocaleString() + " → (" + toFixed2(marginPrice) + " + " + toFixed2(marginTax) + ") × " + q.toLocaleString() + " = " + fmt(expected)
+    );
 
     // Payment helper (AUTOFILL for ALL three types)
-    const payType = ($form.find('.payment-type-select').val() || '').toLowerCase();
+    var payType = ($form.find('.payment-type-select').val() || '').toLowerCase();
     if (payType === 'cash' || payType === 'from account' || payType === 'credit') {
-      const payAmt = q * p;
+      var payAmt = q * p;
       $form.find('input[name="payment_amount"]').val(toFixed2(payAmt));
-      $form.find('.payment-amount-view').text(`= ${fmt(payAmt)} GHS`);
-      // ensure wrapper visible when any type chosen (except s_tax which is handled in setPaymentUI)
+      $form.find('.payment-amount-view').text("= " + fmt(payAmt) + " GHS");
       $form.find('.payment-amount-wrapper').removeClass('d-none');
     } else {
       $form.find('.payment-amount-view').text('');
-      // keep wrapper visibility managed by setPaymentUI
     }
   }
 
   function setPaymentUI($form, mode){
-    const $typeSel = $form.find('.payment-type-select');
-    const $amtWrap = $form.find('.payment-amount-wrapper');
-    const $amtInp  = $form.find('input[name="payment_amount"]');
+    var $typeSel = $form.find('.payment-type-select');
+    var $amtWrap = $form.find('.payment-amount-wrapper');
+    var $amtInp  = $form.find('input[name="payment_amount"]');
 
     if (mode === 's_tax'){
-      // Disable everything & clear values; nothing will be submitted
       $typeSel.val('').prop('disabled', true).prop('required', false).addClass('dimmed');
       $amtInp.val('').prop('disabled', true).prop('required', false);
       $amtWrap.addClass('d-none');
       $form.find('.payment-amount-view').text('');
     } else {
-      // Re-enable type select; amount shows for ANY chosen type
       $typeSel.prop('disabled', false).removeClass('dimmed');
       $typeSel.prop('required', false);
       $amtInp.prop('required', false).prop('disabled', false);
-      const hasType = ($typeSel.val() || '').length > 0;
+      var hasType = ($typeSel.val() || '').length > 0;
       $amtWrap.toggleClass('d-none', !hasType);
     }
   }
 
   // ---------- Events ----------
   $(document).on('click', '.mode-btn', function(){
-    const $form = $(this).closest('form');
+    var $form = $(this).closest('form');
     setModeUI($form, $(this).data('mode'));
     computeFormValues($form);
   });
 
   $(document).on('input', '.p_bdc_input, .s_bdc_input, .p_tax_input, .s_tax_input', function(){
-    const $form = $(this).closest('form');
+    var $form = $(this).closest('form');
     computeFormValues($form);
   });
 
   $(document).on('change', '.payment-type-select', function () {
-    const $form = $(this).closest('form');
+    var $form = $(this).closest('form');
     setPaymentUI($form, $form.find('.order_type').val() || 'combo');
     computeFormValues($form);
   });
 
   // Autofill price button (P & S)
   $(document).on('click', '.fetch-price-btn', function () {
-    const btn = $(this);
-    const product = btn.data('product');
-    const $form = btn.closest('form');
+    var btn = $(this);
+    var product = btn.data('product');
+    var $form = btn.closest('form');
 
     $.get('/orders/get_product_price', { name: product })
       .done(function (res) {
@@ -516,7 +515,7 @@
         computeFormValues($form);
       })
       .fail(function (xhr) {
-        const err = xhr.responseJSON?.error || 'Failed to fetch price';
+        var err = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to fetch price';
         alert(err);
       });
   });
@@ -524,7 +523,7 @@
   // Init select2 + initial compute
   $(document).ready(function () {
     $('.omc-select, .bdc-select').each(function () {
-      const $modal = $(this).closest('.modal');
+      var $modal = $(this).closest('.modal');
       $(this).select2({
         placeholder: "Select or search...",
         dropdownParent: $modal.length ? $modal : $(document.body),
@@ -533,31 +532,36 @@
     });
 
     $('.order-update-form').each(function(){
-      const $form = $(this);
-      const mode = $form.find('.order_type').val() || 'combo';
+      var $form = $(this);
+      var mode = $form.find('.order_type').val() || 'combo';
       setModeUI($form, mode);
       computeFormValues($form);
     });
   });
 
-  // Submit (keep disabled inputs disabled so they won't serialize)
+  // Submit (no backticks)
   $(document).on('submit', '.order-update-form', function (e) {
     e.preventDefault();
-    const $form = $(this);
+    var $form = $(this);
 
-    $.post(`/orders/update/${$form.data('id')}`, $form.serialize())
+    $.post('/orders/update/' + $form.data('id'), $form.serialize())
       .done(function (res) {
-  if (res.approved && res.invoice_url) {
-    window.location.href = res.invoice_url; // go to invoice template
-    return;
-  }
-  $('#order-alert').html(`<div class="alert alert-success">${res.message}</div>`);
-  setTimeout(() => loadContent('/orders', 'Review Orders'), 800);
-})
-
+        if (res.approved && res.invoice_url) {
+          window.location.href = res.invoice_url;
+          return;
+        }
+        $('#order-alert').html('<div class="alert alert-success">' + res.message + '</div>');
+        setTimeout(function(){
+          if (typeof loadContent === 'function') {
+            loadContent('/orders', 'Review Orders');
+          } else {
+            window.location.reload();
+          }
+        }, 800);
+      })
       .fail(function (xhr) {
-        const err = xhr.responseJSON?.error || 'Failed to update order.';
-        $('#order-alert').html(`<div class="alert alert-danger">${err}</div>`);
+        var err = (xhr.responseJSON && xhr.responseJSON.error) || 'Failed to update order.';
+        $('#order-alert').html('<div class="alert alert-danger">' + err + '</div>');
       });
   });
 </script>
