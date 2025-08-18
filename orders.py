@@ -13,12 +13,14 @@ products_collection = db['products']  # Products collection
 
 # --------------- helpers ---------------
 def _f(v):
+    """parse float or return None"""
     try:
         return float(v)
     except (TypeError, ValueError):
         return None
 
-def _nz(v):  # treat None as 0.0
+def _nz(v):
+    """None -> 0.0 without changing real zeros"""
     return v if v is not None else 0.0
 
 
@@ -56,20 +58,24 @@ def view_orders():
         s_tax = _f(order.get('s_tax'))
         q     = _f(order.get('quantity')) or 0.0
 
+        # per-L margins (only if both sides available)
         margin_price = (s - p) if (s is not None and p is not None) else None
         margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-        order['margin'] = round(margin_price, 2) if margin_price is not None else None
+        # expose both margins for the UI
+        order['margin']      = round(margin_price, 2) if margin_price is not None else None
+        order['margin_tax']  = round(margin_tax, 2)   if margin_tax   is not None else None
 
-        # returns for initial render
-        ret_sbdc  = (s * q)     if (s is not None)     else 0.0
-        ret_stax  = (s_tax * q) if (s_tax is not None) else 0.0
-        ret_total = ret_sbdc + ret_stax
+        # returns = Q × (sum of available margins)
+        ret_price = (_nz(margin_price)) * q
+        ret_tax   = (_nz(margin_tax)) * q
+        ret_total = ret_price + ret_tax
 
-        order['returns_sbdc']  = round(ret_sbdc, 2)
-        order['returns_stax']  = round(ret_stax, 2)
+        # store per-part + total for initial render
+        order['returns_sbdc']  = round(ret_price, 2)   # price-margin × Q
+        order['returns_stax']  = round(ret_tax, 2)     # tax-margin × Q
         order['returns_total'] = round(ret_total, 2)
-        order['returns']       = round(ret_total, 2)  # legacy
+        order['returns']       = round(ret_total, 2)   # legacy alias
 
     return render_template('partials/orders.html', orders=orders, bdcs=bdcs)
 
@@ -84,7 +90,7 @@ def update_order(order_id):
 
     fields = {
         "omc": form.get("omc"),
-        "bdc": form.get("bdc"),  # may be None when S‑Tax
+        "bdc": form.get("bdc"),  # may be None when S-Tax
         "depot": form.get("depot"),
         "p_bdc_omc": form.get("p_bdc_omc"),
         "s_bdc_omc": form.get("s_bdc_omc"),
@@ -96,7 +102,7 @@ def update_order(order_id):
         "shareholder": (form.get("shareholder") or "").strip()
     }
 
-    # Basic requireds: OMC & DEPOT always; BDC required unless S‑Tax
+    # Basic requireds: OMC & DEPOT always; BDC required unless S-Tax
     if not all([fields["omc"], fields["depot"]]):
         return jsonify({"success": False, "error": "OMC and DEPOT are required."}), 400
     if mode != "s_tax" and not fields["bdc"]:
@@ -140,11 +146,11 @@ def update_order(order_id):
         if s is None or s_tax is None:
             return jsonify({"success": False, "error": "S-BDC and S-Tax are required for Combo type."}), 400
 
-    # Compute margins per L
+    # ---- per-L margins ----
     margin_price = (s - p) if (s is not None and p is not None) else None
     margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-    # Compute total debt by order type
+    # ---- total debt by order type (unchanged) ----
     if mode == "s_bdc":
         total_debt   = _nz(s) * q
         active_margin = margin_price
@@ -153,12 +159,12 @@ def update_order(order_id):
         active_margin = margin_tax
     else:  # combo
         total_debt   = (_nz(s) + _nz(s_tax)) * q
-        active_margin = margin_price  # display
+        active_margin = margin_price  # for display; you can keep this convention
 
-    # Returns (always)
-    returns_sbdc  = (_nz(s) * q)     if (s is not None)     else 0.0
-    returns_stax  = (_nz(s_tax) * q) if (s_tax is not None) else 0.0
-    returns_total = returns_sbdc + returns_stax
+    # ---- RETURNS (FIXED): use MARGINS, not S values ----
+    returns_price = _nz(margin_price) * q  # 0 if price margin not available
+    returns_tax   = _nz(margin_tax) * q    # 0 if tax margin not available
+    returns_total = returns_price + returns_tax
 
     # Build update doc
     update_data = {
@@ -171,17 +177,17 @@ def update_order(order_id):
         "s_tax": s_tax,
         "order_type": mode,
         "total_debt": round(total_debt, 2),
-        "returns_sbdc": round(returns_sbdc, 2),
-        "returns_stax": round(returns_stax, 2),
+        # store parts as "returns_*" for continuity with the UI
+        "returns_sbdc": round(returns_price, 2),   # price-margin × Q
+        "returns_stax": round(returns_tax, 2),     # tax-margin × Q
         "returns_total": round(returns_total, 2),
-        "returns": round(returns_total, 2),  # legacy
+        "returns": round(returns_total, 2),        # legacy alias
     }
     if margin_price is not None:
         update_data["margin_price"] = round(margin_price, 2)
+        update_data["margin"] = round(margin_price, 2)  # keep your existing "margin" field behavior
     if margin_tax is not None:
         update_data["margin_tax"] = round(margin_tax, 2)
-    if active_margin is not None:
-        update_data["margin"] = round(active_margin, 2)
 
     # Due date
     if fields["due_date"]:
@@ -192,7 +198,7 @@ def update_order(order_id):
     else:
         update_data["due_date"] = None
 
-    # BDC lookup & set only when not S‑Tax
+    # BDC lookup & set only when not S-Tax
     bdc_id = None
     if mode != "s_tax":
         try:
@@ -245,7 +251,7 @@ def update_order(order_id):
                 {"$push": {"payment_details": payment_entry}}
             )
 
-            # Also push to BDC only if we have one (i.e., not S‑Tax)
+            # Also push to BDC only if we have one (i.e., not S-Tax)
             if bdc_id:
                 bdc_collection.update_one(
                     {"_id": bdc_id},
@@ -254,8 +260,8 @@ def update_order(order_id):
 
     # Status – approve if totals + margin exist as appropriate (independent of balance)
     complete_fields = (update_data.get("total_debt") is not None) and (
-        (mode == "s_tax" and ("margin" in update_data or "returns_total" in update_data)) or
-        (mode in ("s_bdc", "combo") and ("margin" in update_data or "returns_total" in update_data))
+        (mode == "s_tax" and ("returns_total" in update_data or "margin_tax" in update_data)) or
+        (mode in ("s_bdc", "combo") and ("returns_total" in update_data or "margin" in update_data))
     )
     update_data["status"] = "approved" if complete_fields else "pending"
     update_data["delivery_status"] = "pending"
