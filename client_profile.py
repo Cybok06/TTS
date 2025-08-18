@@ -41,92 +41,113 @@ def _parse_dt(v):
 
 @client_profile_bp.route('/client/<client_id>')
 def client_profile(client_id):
-    try:
-        # ✅ Validate ObjectId
-        if not ObjectId.is_valid(client_id):
-            return "Invalid client ID", 400
+    # ✅ Validate ObjectId
+    if not ObjectId.is_valid(client_id):
+        return "Invalid client ID", 400
 
-        oid = ObjectId(client_id)
+    oid = ObjectId(client_id)
 
-        # ✅ Fetch client
-        client = clients_collection.find_one({"_id": oid})
-        if not client:
-            return "Client not found", 404
+    # ✅ Fetch client
+    client = clients_collection.find_one({"_id": oid})
+    if not client:
+        return "Client not found", 404
 
-        # ✅ Fetch all orders for this client (support both ObjectId and string storage)
-        orders = list(
-            orders_collection.find({"client_id": {"$in": [oid, str(oid)]}})
-                             .sort("date", -1)
-        )
+    # ✅ Fetch all orders for this client (support both ObjectId and string storage)
+    orders = list(
+        orders_collection.find({"client_id": {"$in": [oid, str(oid)]}})
+                         .sort("date", -1)
+    )
 
-        # ---- Aggregate confirmed payments for ALL orders in one pass ----
-        order_ids_obj = [o["_id"] for o in orders]
-        order_ids_str = [str(x) for x in order_ids_obj]
+    # ---- Aggregate confirmed payments for these orders (payments-only) ----
+    order_ids_obj = [o["_id"] for o in orders]
 
-        payments_match = {
-            "status": {"$regex": "^confirmed$", "$options": "i"},
-            "order_id": {"$in": order_ids_obj + order_ids_str},
-            # If your payments store client_id, narrow by both forms:
-            "client_id": {"$in": [oid, str(oid)]}
-        }
-
+    paid_map = {}
+    if order_ids_obj:
         pipeline = [
-            {"$match": payments_match},
-            {"$group": {"_id": "$order_id", "total_paid": {"$sum": "$amount"}}}
+            {
+                "$match": {
+                    "status": {"$regex": "^confirmed$", "$options": "i"},
+                    "client_id": oid,                     # payments use ObjectId client_id
+                    "order_id": {"$in": order_ids_obj}    # payments use ObjectId order_id
+                }
+            },
+            {
+                # robust if amount sometimes stored as string
+                "$addFields": {
+                    "amount_num": {
+                        "$convert": {"input": "$amount", "to": "double", "onError": 0, "onNull": 0}
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$order_id",
+                    "total_paid": {"$sum": "$amount_num"}
+                }
+            }
         ]
+        paid_map = {row["_id"]: _f(row.get("total_paid")) for row in payments_collection.aggregate(pipeline)}
 
-        paid_map = {}
-        for row in payments_collection.aggregate(pipeline):
-            key = row["_id"]  # could be ObjectId or string
-            total_paid = _f(row.get("total_paid"))
-            paid_map[key] = total_paid
-            try:
-                paid_map[str(key)] = total_paid
-            except Exception:
-                pass
+    # ✅ Decorate each order (dates, margins, returns, paid/left)
+    for o in orders:
+        # Dates
+        o["date"] = _parse_dt(o.get("date"))
+        o["due_date"] = _parse_dt(o.get("due_date"))
 
-        # ✅ Decorate each order (dates, margin/returns fallback, amount_paid/left)
-        for o in orders:
-            # Dates
-            o["date"] = _parse_dt(o.get("date"))
-            o["due_date"] = _parse_dt(o.get("due_date"))
+        # Ensure numeric base fields
+        p     = _f(o.get("p_bdc_omc"), None)
+        s     = _f(o.get("s_bdc_omc"), None)
+        p_tax = _f(o.get("p_tax"), None)
+        s_tax = _f(o.get("s_tax"), None)
+        q     = _f(o.get("quantity"), 0.0)
 
-            # Margin & returns (use existing if present, else compute basic)
-            if "margin" not in o or o.get("margin") is None:
-                p = _f(o.get("p_bdc_omc"))
-                s = _f(o.get("s_bdc_omc"))
-                o["margin"] = round(s - p, 2)
-            if "returns" not in o or o.get("returns") is None:
-                o["returns"] = round(_f(o.get("margin")) * _f(o.get("quantity")), 2)
+        # Derive per-L margins (don’t write to DB here; just decorate for view)
+        margin_price = (s - p) if (s is not None and p is not None) else None
+        margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-            # Tax & total_debt defaults
-            o["tax"] = _f(o.get("tax"))
-            o["total_debt"] = _f(o.get("total_debt"))
+        # Expose useful fields for template (if you want to show them)
+        o["margin_price"] = round(margin_price, 2) if margin_price is not None else None
+        o["margin_tax"]   = round(margin_tax, 2) if margin_tax is not None else None
 
-            # Payments: external (payments collection) + embedded (legacy)
-            paid_external = _f(paid_map.get(o["_id"])) or _f(paid_map.get(str(o["_id"])))
-            paid_embedded = sum(_f(p.get("amount")) for p in (o.get("payment_details") or []))
-            o["amount_paid"] = round(paid_external + paid_embedded, 2)
-            o["amount_left"] = round(o["total_debt"] - o["amount_paid"], 2)
+        # Returns total using the new rule:
+        # - If both per-L margins exist: (margin_price + margin_tax) * Q
+        # - Else if only one exists:     that_margin * Q
+        # - Else:                        0
+        per_l_sum = 0.0
+        if margin_price is not None: per_l_sum += margin_price
+        if margin_tax   is not None: per_l_sum += margin_tax
+        returns_total = round(per_l_sum * q, 2) if per_l_sum != 0 else 0.0
 
-        # ✅ Latest approved order (if any) and summary box values
-        latest_approved = next((x for x in orders if (x.get("status") or "").lower() == "approved"), None)
-        if latest_approved:
-            total_paid = _f(latest_approved.get("amount_paid"))
-            amount_left = max(_f(latest_approved.get("total_debt")) - total_paid, 0.0)
+        # Keep existing returns if already stored, else use derived
+        if o.get("returns_total") is None and o.get("returns") is None:
+            o["returns_total"] = returns_total
+            o["returns"] = returns_total
         else:
-            total_paid = 0.0
-            amount_left = 0.0
+            # prefer explicit returns_total if present; otherwise fall back to returns
+            o["returns_total"] = _f(o.get("returns_total"), _f(o.get("returns"), returns_total))
 
-        return render_template(
-            "partials/client_profile.html",
-            client=client,
-            orders=orders,
-            latest_approved=latest_approved,
-            total_paid=round(total_paid, 2),
-            amount_left=round(amount_left, 2)
-        )
+        # Debt (display only, do not change db here)
+        o["total_debt"] = _f(o.get("total_debt"))
 
-    except Exception as e:
-        # In production you might log e and show a friendlier page
-        return f"An error occurred: {str(e)}", 500
+        # Payments ONLY from payments collection
+        paid_external = _f(paid_map.get(o["_id"]))  # defaults to 0.0 when missing
+        o["amount_paid"] = round(paid_external, 2)
+        o["amount_left"] = round(o["total_debt"] - o["amount_paid"], 2)
+
+    # ✅ Latest approved order (if any) and summary box values
+    latest_approved = next((x for x in orders if (x.get("status") or "").lower() == "approved"), None)
+    if latest_approved:
+        total_paid = _f(latest_approved.get("amount_paid"))
+        amount_left = max(_f(latest_approved.get("total_debt")) - total_paid, 0.0)
+    else:
+        total_paid = 0.0
+        amount_left = 0.0
+
+    return render_template(
+        "partials/client_profile.html",
+        client=client,
+        orders=orders,
+        latest_approved=latest_approved,
+        total_paid=round(total_paid, 2),
+        amount_left=round(amount_left, 2)
+    )
