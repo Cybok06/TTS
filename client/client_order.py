@@ -52,13 +52,15 @@ def submit_order():
         # Try to find a truck match by truck_number (used in dropdown)
         truck = trucks_collection.find_one({"truck_number": selected_truck_number})
 
-        # Optional: snapshot the current product s_price into the order for future reference
+        # Snapshot current product prices + taxes into the order
         prod_doc = products_collection.find_one(
             {"name": Regex(f"^{product}$", "i")},
-            {"s_price": 1, "p_price": 1, "name": 1}
+            {"s_price": 1, "p_price": 1, "s_tax": 1, "p_tax": 1, "name": 1}
         )
         snapshot_s_price = (prod_doc or {}).get("s_price")
         snapshot_p_price = (prod_doc or {}).get("p_price")
+        snapshot_s_tax   = (prod_doc or {}).get("s_tax")
+        snapshot_p_tax   = (prod_doc or {}).get("p_tax")
 
         # Build the base order doc
         base_order = {
@@ -71,9 +73,11 @@ def submit_order():
             "region": region,
             "status": "pending",
             "date": datetime.utcnow(),
-            # store current prices at order time (optional but useful)
+            # store current prices & taxes at order time (what the client saw)
             "product_s_price": snapshot_s_price,
-            "product_p_price": snapshot_p_price
+            "product_p_price": snapshot_p_price,
+            "product_s_tax":   snapshot_s_tax,
+            "product_p_tax":   snapshot_p_tax,
         }
         if truck:
             base_order["truck_id"] = truck["_id"]
@@ -109,10 +113,10 @@ def submit_order():
         flash(f"Order submitted successfully! Your Order ID is {code}", "success")
         return redirect(url_for('client_order.submit_order'))
 
-    # GET request: fetch product (with prices) and truck options
+    # GET request: fetch product (with prices + taxes) and truck options
     products = list(products_collection.find(
         {},
-        {"name": 1, "description": 1, "s_price": 1, "p_price": 1}
+        {"name": 1, "description": 1, "s_price": 1, "p_price": 1, "s_tax": 1, "p_tax": 1}
     ))
     trucks = list(trucks_collection.find(
         {},
@@ -123,9 +127,15 @@ def submit_order():
 @client_order_bp.route('/client/product_price', methods=['GET'])
 def client_product_price():
     """
-    AJAX: Return s_price (and p_price) for a given product name.
+    AJAX: Return s_price, p_price, s_tax, p_tax, and a convenience s_total (per L)
+    for a given product name.
     Query: /client/product_price?name=Ago%20cell%20Site
-    Response: { success: True, s_price: 9.0, p_price: 8.9 }
+    Response: {
+      success: True,
+      s_price: 9.0, p_price: 8.9,
+      s_tax: 0.5, p_tax: 0.3,
+      s_total: 9.5
+    }
     """
     name = (request.args.get('name') or '').strip()
     if not name:
@@ -133,13 +143,25 @@ def client_product_price():
 
     product = products_collection.find_one(
         {"name": Regex(f"^{name}$", "i")},
-        {"s_price": 1, "p_price": 1}
+        {"s_price": 1, "p_price": 1, "s_tax": 1, "p_tax": 1}
     )
     if not product:
         return jsonify({"success": False, "error": "Product not found"}), 404
 
+    def _num(v): 
+        try: return float(v or 0)
+        except Exception: return 0.0
+
+    s_price = _num(product.get("s_price"))
+    p_price = _num(product.get("p_price"))
+    s_tax   = _num(product.get("s_tax"))
+    p_tax   = _num(product.get("p_tax"))
+
     return jsonify({
         "success": True,
-        "s_price": product.get("s_price", 0),
-        "p_price": product.get("p_price", 0)
+        "s_price": s_price,
+        "p_price": p_price,
+        "s_tax":   s_tax,
+        "p_tax":   p_tax,
+        "s_total": s_price + s_tax
     })
