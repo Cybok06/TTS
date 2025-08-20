@@ -26,9 +26,11 @@
     .back-link i { margin-right: 6px; }
     .alert { font-size: .95rem; }
 
-    /* Price badge */
+    /* Price badges */
     .price-pill {
-      display: none;
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
       font-weight: 600;
       border: 1px solid #0d6efd;
       background: #eef5ff;
@@ -37,8 +39,16 @@
       padding: .35rem .75rem;
       white-space: nowrap;
     }
+    .price-pill.total {
+      background: #0d6efd;
+      color: #fff;
+      border-color: #0d6efd;
+    }
+    .price-badges {
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+    }
     @media (max-width: 575.98px){
-      .price-pill { margin-top: .5rem; display: inline-block; }
+      .price-badges { margin-top: .5rem; }
     }
   </style>
 </head>
@@ -68,13 +78,23 @@
 
     <form method="POST">
       <div class="row g-3">
-        <!-- Product + S-Price badge -->
+        <!-- Product + badges (S-Price, S-Tax, Total/L) -->
         <div class="col-md-6">
-          <label class="form-label d-flex align-items-center justify-content-between">
+          <label class="form-label d-flex align-items-center justify-content-between flex-wrap">
             <span>Product</span>
-            <span id="sPriceBadge" class="price-pill">
-              <i class="bi bi-tag me-1"></i>
-              Selling Price: GHS <span id="sPriceVal">0.00</span>
+            <span class="price-badges">
+              <span id="sPriceBadge" class="price-pill">
+                <i class="bi bi-tag"></i>
+                S-Price: GHS <span id="sPriceVal">0.00</span>
+              </span>
+              <span id="sTaxBadge" class="price-pill">
+                <i class="bi bi-receipt"></i>
+                S-Tax: GHS <span id="sTaxVal">0.00</span>
+              </span>
+              <span id="sTotalBadge" class="price-pill total">
+                <i class="bi bi-calculator"></i>
+                Total/L: GHS <span id="sTotalVal">0.00</span>
+              </span>
             </span>
           </label>
           <select class="form-select" name="product" id="productSelect" required>
@@ -84,6 +104,8 @@
                 value="{{ product.name }}"
                 data-sprice="{{ '%.2f'|format(product.s_price or 0) }}"
                 data-pprice="{{ '%.2f'|format(product.p_price or 0) }}"
+                data-stax="{{ '%.2f'|format(product.s_tax   or 0) }}"
+                data-ptax="{{ '%.2f'|format(product.p_tax   or 0) }}"
               >
                 {{ product.name }}{% if product.description %} - {{ product.description }}{% endif %}
               </option>
@@ -153,6 +175,7 @@
     </form>
   </div>
 </div>
+
 <script>
   // ---------- Truck -> autofill fields + quantity ----------
   const truckSel = document.getElementById('truck_selector');
@@ -163,7 +186,6 @@
 
   function parseCapacity(raw){
     if (!raw) return null;
-    // keep digits only (works for "18,000L" or "18000")
     const num = String(raw).replace(/[^\d]/g, '');
     const n = parseInt(num, 10);
     return Number.isFinite(n) && n > 0 ? n : null;
@@ -172,19 +194,10 @@
   function selectQuantityByCapacity(cap){
     if (!cap) return;
     const capStr = String(cap);
-
-    // Remove any prior dynamic option
     const prior = qtySel.querySelector('option[data-dyn="1"]');
     if (prior) prior.remove();
-
-    // Try to select an existing option
     const has = Array.from(qtySel.options).some(o => o.value === capStr);
-    if (has){
-      qtySel.value = capStr;
-      return;
-    }
-
-    // Otherwise, create a temporary option and select it
+    if (has){ qtySel.value = capStr; return; }
     const label = cap.toLocaleString() + ' (from truck)';
     const opt = new Option(label, capStr, true, true);
     opt.setAttribute('data-dyn', '1');
@@ -193,9 +206,7 @@
 
   truckSel.addEventListener('change', function(){
     const opt = this.options[this.selectedIndex];
-
     if (!opt || !opt.value){
-      // cleared
       vehicleEl.value = '';
       driverEl.value  = '';
       phoneEl.value   = '';
@@ -204,19 +215,18 @@
       if (prior) prior.remove();
       return;
     }
-
     vehicleEl.value = opt.value || '';
     driverEl.value  = opt.getAttribute('data-driver') || '';
     phoneEl.value   = opt.getAttribute('data-phone')  || '';
-
     const cap = parseCapacity(opt.getAttribute('data-capacity'));
     selectQuantityByCapacity(cap);
   });
 
-  // ---------- S-Price badge handling ----------
+  // ---------- S-Price / S-Tax / Total badges ----------
   const productSelect = document.getElementById('productSelect');
-  const badge = document.getElementById('sPriceBadge');
-  const badgeVal = document.getElementById('sPriceVal');
+  const sPriceVal = document.getElementById('sPriceVal');
+  const sTaxVal   = document.getElementById('sTaxVal');
+  const sTotalVal = document.getElementById('sTotalVal');
 
   function fmt(n){
     const num = Number(n);
@@ -225,44 +235,55 @@
       : '0.00';
   }
 
-  async function setPriceFromServer(name){
+  async function fetchPricePack(name){
     try{
       const res = await fetch(`/client/product_price?name=${encodeURIComponent(name)}`);
       if (!res.ok) return null;
       const data = await res.json();
-      if (data && data.success) return data.s_price ?? 0;
+      if (data && data.success) {
+        return {
+          s_price: Number(data.s_price || 0),
+          s_tax:   Number(data.s_tax   || 0),
+          s_total: Number(data.s_total || 0)
+        };
+      }
     }catch(e){ /* ignore */ }
     return null;
   }
 
-  async function updatePriceBadge(){
+  async function updatePriceBadges(){
     const opt = productSelect.options[productSelect.selectedIndex];
     if (!opt || !opt.value){
-      badge.style.display = 'none';
-      badgeVal.textContent = '0.00';
+      sPriceVal.textContent = '0.00';
+      sTaxVal.textContent   = '0.00';
+      sTotalVal.textContent = '0.00';
       return;
     }
 
-    // Try data attribute first
-    let sprice = opt.getAttribute('data-sprice');
-    if (!sprice || Number(sprice) <= 0){
-      // Fallback to API
-      const apiPrice = await setPriceFromServer(opt.value);
-      if (apiPrice !== null) sprice = apiPrice;
+    // Prefer <option> data-* for speed
+    let sprice = Number(opt.getAttribute('data-sprice') || 0);
+    let stax   = Number(opt.getAttribute('data-stax')   || 0);
+
+    // If missing, fallback to API
+    if (!Number.isFinite(sprice) || !Number.isFinite(stax)) {
+      const pack = await fetchPricePack(opt.value);
+      if (pack){
+        sprice = pack.s_price;
+        stax   = pack.s_tax;
+      }
     }
 
-    if (sprice !== null && sprice !== undefined){
-      badgeVal.textContent = fmt(sprice);
-      badge.style.display = 'inline-flex';
-    } else {
-      badge.style.display = 'none';
-    }
+    const stotal = (Number.isFinite(sprice) ? sprice : 0) + (Number.isFinite(stax) ? stax : 0);
+
+    sPriceVal.textContent = fmt(sprice);
+    sTaxVal.textContent   = fmt(stax);
+    sTotalVal.textContent = fmt(stotal);
   }
 
-  productSelect.addEventListener('change', updatePriceBadge);
-  updatePriceBadge(); // init
+  productSelect.addEventListener('change', updatePriceBadges);
+  // Initialize on load (if first option preselected)
+  updatePriceBadges();
 </script>
-
 
 </body>
 </html>
