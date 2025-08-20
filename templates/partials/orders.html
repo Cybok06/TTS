@@ -23,6 +23,17 @@
     .metric-box { background:#f8f9fa; border-radius:.5rem; padding:.5rem .75rem; }
     .metric-heading { font-size:.85rem; color:#6c757d; margin-bottom:.2rem; }
     .metric-value { font-weight:600; }
+
+    /* Actions row: stacks nicely on mobile */
+    .actions-grid {
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:.5rem;
+    }
+    @media (min-width: 576px){
+      .actions-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
     @media (max-width: 576px){
       .form-label, .btn { font-size:.95rem; }
       .btn-toggle-group .btn { min-width: 31%; padding:.5rem .25rem; }
@@ -41,17 +52,21 @@
     <div class="card mb-4 shadow-sm">
       <div class="card-header bg-light d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div class="d-flex align-items-center flex-wrap gap-2">
-          <div class="d-inline-flex align-items-center text-decoration-none">
+          <a class="d-inline-flex align-items-center text-decoration-none" href="javascript:void(0)">
             {% if order.client_image_url %}
               <img src="{{ order.client_image_url }}" alt="Client Image" class="rounded-circle me-2" width="32" height="32">
             {% else %}
               <div class="rounded-circle bg-secondary me-2" style="width:32px; height:32px;"></div>
             {% endif %}
             <strong>{{ order.client_name or 'Client' }} ({{ order.client_id }})</strong>
-          </div>
+          </a>
           <small>• {{ order.product }} • {{ order.quantity }} L • {{ order.date or '' }}</small>
         </div>
-        <button type="button" class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#detailsModal{{ order._id }}">
+        <button
+          type="button"
+          class="btn btn-sm btn-outline-info"
+          data-bs-toggle="modal"
+          data-bs-target="#detailsModal{{ order._id }}">
           View Details
         </button>
       </div>
@@ -61,7 +76,15 @@
               action="/orders/update/{{ order._id }}"
               class="row g-3 order-update-form"
               data-id="{{ order._id }}"
-              data-qty="{{ order.quantity|float }}">
+              data-qty="{{ order.quantity|float }}"
+              data-client="{{ order.client_name or 'Client' }}"
+              data-clientid="{{ order.client_id }}"
+              data-product="{{ order.product or '' }}"
+              data-vehicle="{{ order.vehicle_number or '' }}"
+              data-driver="{{ order.driver_name or '' }}"
+              data-driverphone="{{ order.driver_phone or '' }}"
+              data-region="{{ order.region or '' }}"
+              data-date="{{ order.date or '' }}">
           <!-- Order Type toggle -->
           <div class="col-12">
             <label class="form-label mb-1 d-flex justify-content-between align-items-center">
@@ -94,73 +117,12 @@
             <label class="form-label">OMC</label>
             <select name="omc" class="form-control omc-select" required>
               <option value="">Select OMC</option>
-              {% set omcs = [
-                "AEGIS HUILE COMPANY LIMITED","AGAPET LIMITED","AGETHA ENERGY LIMITED","AI ENERGY & PETROLEUM LIMITED",
-                "AKARA ENERGY LIMITED","ALINCO OIL COMPANY LIMITED","ALIVE GAS SERVICES LIMITED",
-                "ALLIED OIL COMPANY LIMITED","AMDAWAY OIL COMPANY LIMITED","AMINASER OIL COMPANY LIMITED",
-                "AMINSO ENERGY LIMITED","ANASSET COMPANY LIMITED","ANDEV COMPANY LIMITED","ANNANDALE GHANA LIMITED",
-                "AP OIL & GAS GHANA LIMITED","APRIL-OIL GHANA LTD","BAFFOUR GAS COMPANY LIMITED","BEAP ENERGY GHANA LIMITED",
-                "BELLO PETROLEUM LIMITED","BENAB OIL COMPANY LIMITED","BF PETROLEUM LIMITED","BG PETROLEUM LIMITED",
-                "BIGEN PETROLEUM LIMITED","BLANKO OIL COMPANY LIMITED","BLOOM PETROLEUM LIMITED",
-                "BREEDLOVE COMPANY LIMITED","BRENT PETROLEUM LIMITED","BROGAN ENERGY LIMITED","BUFFALO OIL LIMITED",
-                "CASH OIL COMPANY LIMITED","CD LOW PRICE MASTER LIMITED","CENT EASTERN GAS LIMITED",
-                "CENTRAL BRENT PETROLEUM LIMITED","CHAMPION OIL CO. LTD","CIGO ENERGY LIMITED","COEGAN GHANA LIMITED",
-                "COLONY ENERGY LTD","COMPASS OLEUM LIMITED","CONCORD OIL LIMITED","COST ENERGY LIMITED",
-                "CROWN PETROLEUM GH. LTD","DA OIL COMPANY LIMITED","DABEMENS LTD","DAVIS PETROLEUM COMPANY LIMITED",
-                "DEJON JONES LIMITED","DENZ ENERGY LIMITED","DESERT OIL GHANA LIMITED","DUKES PETROLEUM LIMITED",
-                "EARTH ENERGY LIMITED","EDEN PETROLEUM LIMITED","E-HAN GROUP LTD","ENERGETIC PETROLEUM ENERGY LIMITED COMPANY",
-                "ENGEN GHANA LTD","ESSENCE ENERGY COMPANY LIMITED","EV. OIL COMPANY LIMITED",
-                "E-WINDSTAR PETROLEUM ENERGY LIMITED","EX OIL LIMITED","EXCEL OIL CO. LTD","EXPRESS PETROLEUM LIMITED",
-                "EZA PETROLEUM GHANA LIMITED","FAMOUS ENERGY LIMITED","FINEST OIL COMPANY LIMITED","FIRST GAS CO. LTD.",
-                "FRAGA OIL GH. LTD","FRIMPS OIL CO. LTD","FRONTIER OIL GHANA LIMITED","FUELIT ENERGIES LIMITED",
-                "GAB ENERGY LIMITED","GAMMA PETROLEUM & ENERGY SERVICES LTD","GASO PETROLEUM LIMITED",
-                "GAT OIL COMPANY LIMITED","GB OIL LIMITED","GLOBAL STANDARD PETROLEUM LIMITED","GLORY OIL CO. LTD",
-                "GO-GAS VENTURES LIMITED","GOIL PLC","GOODNESS ENERGY LIMITED","GOWELL ENERGY LIMITED","GREEN GG7 LTD",
-                "GREENWORLD OIL SERVICES LIMITED","GRID PETROLEUM GHANA LIMITED","GROUPE TRANSAFRICANA LIMITED",
-                "GULF ENERGY GHANA LIMITED","HENOS ENERGY LIMITED","HILLS OIL MARKETING COMPANY LIMITED",
-                "HUMANO ENERGY LIMITED","HUSS PETROLEUM LIMITED","IBM PETROLEUM LIMITED","ICON ENERGY LIMITED",
-                "INFIN GHANA LIMITED","IZ SALSABILLA COMPANY LIMITED","JANDA GHANA LIMITED","JD- LINK OIL COMPANY LIMITED",
-                "JET PETROLEUM SERVICES LTD","JO & JU ENERGY LIMITED","JOEKONA COMPANY LIMITED","JONES ENERGY LIMITED",
-                "JP TRUSTEES LIMITED","JUSBRO PETROLEUM CO. LTD","KABORE OIL LIMITED",
-                "KAN ROYAL SERVICE STATION & TRADING LIMITED","KAYSENS LTD","KI ENERGY LIMITED","KINGS ENERGY LIMITED",
-                "KINGSPERP OIL LIMITED","KOANTWI COMPANY LIMITED","KTC ENERGY LIMITED",
-                "L. LINK PETROLEUM COMPANY LIMITED","LA CLEM GHANA LIMITED","LAMBARK GAS COMPANY LIMITED",
-                "LAMININ BEE VENTURES LIMITED","LIBERTY PETROLEUM LIMITED","LIFE ENERGY COMPANY LIMITED",
-                "LIFE PETROLEUM COMPANY LIMITED","LISS PETROLEUM LIMITED","LONA PETROLEUM LIMITED",
-                "LONESTAR GAS COMPANY LIMITED","LOUIS GAS COMPANY LIMITED","LUCKY OIL CO. LTD","MANBAH GAS COMPANY LIMITED",
-                "MAXX ENERGY LIMITED","MAXX GAS LIMITED","MAXXON PETROLEUM LIMITED","MDS EXPRESS OIL & GAS LTD",
-                "MERCY OIL MARKETING COMPANY LIMITED","MIDAS OIL & GAS LIMITED","MIGHTY GAS COMPANY LIMITED",
-                "MM ENERGY LIMITED","MOARI OIL COMPANY LIMITED","MOBIK ENERGY LIMITED","MORE FUEL LTD",
-                "MUNA ENERGY LIMITED","N3 LIMITED","NAAGAMNI GHANA LTD","NADDIF COMPANY LIMITED",
-                "NASONA OIL COMPANY LIMITED","NEXT PETROLEUM LIMITED","NEXTBONS GAS LIMITED",
-                "NICK PETROLEUM GHANA LIMITED","NKA ENERGY LIMITED","NORGAZ PETROLEUM LIMITED","NUJENIX COMPANY LIMITED",
-                "NURU OIL COMPANY LIMITED","OCEAN OIL COMPANY LIMITED","OIL FAST GHANA LTD","OIL-SPACE GHANA LIMITED",
-                "ONYXMA ENERGY LIMITED","P. K OIL & GAS COMPANY LTD","PACIFIC OIL GHANA LIMITED",
-                "PATRICK K.A BONNEY & CO. LIMITED","PETRO SANKOFA LIMITED","PETROCELL LTD","PETROGY LIMITED",
-                "PETROL XP GHANA LIMITED","PETROLAND LIMITED","PETRONAX ENERGY LIMITED",
-                "PETROSOL PLATINUM ENERGY LIMITED.","PLUS ENERGY LIMITED","POWER FUEL DISTRIBUTION COMPANY LIMITED",
-                "PRINCE ENERGY LIMITED","PUMA ENERGY DISTRIBUTION GHANA LIMITED","QUANTUM PETROLEUM LIMITED",
-                "R&P OIL COMPANY LIMITED","RADIANCE PETROLEUM LIMITED","RAJIP OIL COMPANY LTD","RAZs OIL GHANA LIMITED",
-                "READY OIL LIMITED","REFUEL ENERGY LTD","RELIANCE OIL LIMITED","RESTOL ENERGIES LTD",
-                "RIEMA COMPANY LIMITED","RIK ENERGY LIMITED","RODO OIL LIMITED","ROOTSENAF GAS COMPANY LIMITED",
-                "ROYAL ENERGY COMPANY LIMITED","RUNEL OIL LIMITED","S.L. ENERGY LIMITED","SAC ENERGY LIMITED COMPANY",
-                "SAF HOPE COMPANY LTD","SAMA OIL COMPANY LIMITED","SANTOL ENERGY LIMITED","SAP OIL LIMITED",
-                "SAWADIGO OIL COMPANY LIMITED","SAWIZ PETROLEUM COMPANY LIMITED","SAYON ENERGY COMPANY LIMITED",
-                "SEAM OIL COMPANY LIMITED","SEMANHYIA OIL LIMITED","SHAKAINAH VENTURES LIMITED",
-                "SHELLEYCO PETROLEUM LIMITED","SIGNAL OIL LIMITED","SMART & PARTNERS LIMITED","SO ENERGY GH LIMITED",
-                "SONNIDOM  LIMITED","SOTEI ENERGY LIMITED","SPIRITS PETROLEUM LIMITED","STAR OIL CO. LTD",
-                "STRATEGIC ENERGIES LIMITED","SUPERIOR OIL COMPANY LTD.","TEL ENERGY LIMITED","TELIOS ENERGY LIMITED",
-                "THOMHCOF ENERGY LIMITED","TOP OIL COMPANY LIMITED","TORRID GLOBAL COMPANY LIMITED",
-                "TOTALENERGIES MARKETING GHANA PLC","TRADE CROSS LIMITED","TRINITY OIL COMPANY LIMITED",
-                "TRIPLE A LP GAS LIMITED","TRUGREEN PETROLEUM LTD","T-TEKPOR ENERGY LIMITED","UNICORN PERTROLEUM LIMITED",
-                "UNIQUE OIL COMPANY LTD.","UNITY OIL COMPANY LIMITED","VENUS OIL COMPANY LIMITED",
-                "VEROS PETROLEUM LIMITED","VIGGO ENERGY LIMITED","VIRGIN PETROLEUM LIMITED","VIVO ENERGY GHANA PLC",
-                "WABENDSO ENERGIES LIMITED","WEST AFRICA PETROLEUM COMPANY LIMITED (WAPCO)","WEST PORT PETROLEUM LIMITED",
-                "WESTOL PETROLEUM LIMITED","WHITE COAST ENERGY LTD","WORLD GAS COMPANY LIMITED",
-                "XPRESS GAS LIMITED","YASS PETROLEUM COMPANY LIMITED","YOKWA GAS LIMITED","ZEN PETROLEUM LTD"
-              ] %}
-              {% for company in omcs %}
-                <option value="{{ company }}" {% if order.omc == company %}selected{% endif %}>{{ company }}</option>
+              {% for o in omcs %}
+                <option value="{{ o.name }}"
+                        data-rep-phone="{{ o.rep_phone or '' }}"
+                        {% if order.omc == o.name %}selected{% endif %}>
+                  {{ o.name }}{% if o.rep_phone %} — {{ o.rep_phone }}{% endif %}
+                </option>
               {% endfor %}
             </select>
           </div>
@@ -171,7 +133,13 @@
             <select name="bdc" class="form-control bdc-select" required>
               <option value="">Select BDC</option>
               {% for b in bdcs %}
-                <option value="{{ b._id }}" {% if order.bdc_id == b._id %}selected{% endif %}>{{ b.name }}</option>
+                <option
+                  value="{{ b._id }}"
+                  data-bdc-name="{{ b.name }}"
+                  data-rep-phone="{{ b.rep_phone or b.phone or '' }}"
+                  {% if (order.bdc_id|string) == (b._id|string) %}selected{% endif %}>
+                  {{ b.name }}{% if b.rep_phone or b.phone %} — {{ b.rep_phone or b.phone }}{% endif %}
+                </option>
               {% endfor %}
             </select>
           </div>
@@ -199,7 +167,7 @@
           <!-- Depot -->
           <div class="col-12 col-sm-6 col-lg-4">
             <label class="form-label">DEPOT</label>
-            <input type="text" name="depot" class="form-control" value="{{ order.depot or '' }}" required>
+            <input type="text" name="depot" class="form-control depot_input" value="{{ order.depot or '' }}" required>
           </div>
 
           <!-- Prices -->
@@ -296,18 +264,42 @@
                    value="{{ order.due_date.strftime('%Y-%m-%d') if order.due_date else '' }}">
           </div>
 
-          <div class="col-12 col-lg-4 d-flex align-items-end">
-            <button type="submit" class="btn btn-{{ 'success' if filled else 'primary' }} w-100">
-              {{ 'Approve & Update' if filled else 'Update' }}
-            </button>
+          <!-- ACTIONS -->
+          <div class="col-12">
+            <div class="actions-grid">
+              <!-- Confirm (formerly Update) -->
+              <button type="submit" class="btn btn-{{ 'success' if filled else 'primary' }}">
+                {{ 'Approve & Confirm' if filled else 'Confirm' }}
+              </button>
+
+              <!-- Send to OMC (WhatsApp) -->
+              <button type="button" class="btn btn-outline-success send-omc-btn">
+                Send to OMC (WhatsApp)
+              </button>
+
+              <!-- Send to BDC (WhatsApp) -->
+              <button type="button" class="btn btn-outline-success send-bdc-btn">
+                Send to BDC (WhatsApp)
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- View Details Modal -->
-    <div class="modal fade" id="detailsModal{{ order._id }}" tabindex="-1"
-         aria-labelledby="detailsModalLabel{{ order._id }}" aria-hidden="true">
+    <!-- View Details Modal (also carries data-* for reliable reads) -->
+    <div class="modal fade"
+         id="detailsModal{{ order._id }}"
+         tabindex="-1"
+         aria-labelledby="detailsModalLabel{{ order._id }}"
+         aria-hidden="true"
+         data-product="{{ order.product or '' }}"
+         data-vehicle="{{ order.vehicle_number or '' }}"
+         data-driver="{{ order.driver_name or '' }}"
+         data-driverphone="{{ order.driver_phone or '' }}"
+         data-quantity="{{ order.quantity or '' }}"
+         data-region="{{ order.region or '' }}"
+         data-depot="{{ order.depot or '' }}">
       <div class="modal-dialog modal-dialog-scrollable">
         <div class="modal-content">
           <div class="modal-header">
@@ -322,6 +314,7 @@
               <li class="list-group-item"><strong>Driver's Phone:</strong> {{ order.driver_phone or 'N/A' }}</li>
               <li class="list-group-item"><strong>Quantity:</strong> {{ order.quantity or 'N/A' }}</li>
               <li class="list-group-item"><strong>Region:</strong> {{ order.region or 'N/A' }}</li>
+              <li class="list-group-item"><strong>Depot:</strong> {{ order.depot or 'N/A' }}</li>
             </ul>
           </div>
         </div>
@@ -338,6 +331,58 @@
   function toNum(v){ const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
   function toFixed2(n){ n = Number(n); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
   function fmt(n){ n = Number(n); return Number.isFinite(n) ? n.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00'; }
+
+  // Normalize phone to WhatsApp compatible (Ghana default)
+  function normalizePhone(raw){
+    if(!raw) return "";
+    const digits = String(raw).replace(/\D/g,'');
+    if(digits.startsWith('0')) return '233' + digits.slice(1);   // 0XXXXXXXXX -> 233XXXXXXXXX
+    if(digits.startsWith('233')) return digits;                  // already Ghana intl
+    if(digits.startsWith('27') || digits.startsWith('234') || digits.startsWith('44') || digits.startsWith('1')){
+      return digits; // allow other countries if present
+    }
+    return digits; // fallback: pass through cleaned digits
+  }
+
+  function openWhatsApp(phone, message){
+    if(!phone){ alert("No phone number available."); return; }
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  }
+
+  // Build message text from the modal + form (NO footer, NO returns/amounts)
+  function buildMessage($form, includeDepot=false){
+    const id = $form.data('id');
+    const $modal = $(`#detailsModal${id}`);
+
+    // Prefer modal data (reflects what's shown in “View Details”)
+    const product = $modal.data('product') || $form.data('product') || '';
+    const vehicle = $modal.data('vehicle') || $form.data('vehicle') || '';
+    const driver  = $modal.data('driver')  || $form.data('driver')  || '';
+    const dphone  = $modal.data('driverphone') || $form.data('driverphone') || '';
+    const qty     = $modal.data('quantity') || $form.data('qty') || '';
+    const region  = $modal.data('region') || $form.data('region') || '';
+    const depot   = $form.find('.depot_input').val() || $modal.data('depot') || '';
+
+    const client  = $form.data('client') || 'Client';
+    const clientId= $form.data('clientid') || '';
+
+    const due     = ($form.find('input[name="due_date"]').val() || '').trim();
+
+    let lines = [
+      `ORDER DETAILS`,
+      `Client: ${client} (${clientId})`,
+      `Product: ${product}`,
+      `Quantity: ${qty} L`,
+      `Region: ${region}`,
+      `Vehicle: ${vehicle}`,
+      `Driver: ${driver}${dphone ? ' ('+dphone+')' : ''}`
+    ];
+    if(includeDepot){ lines.push(`Depot: ${depot}`); }
+    if(due){ lines.push(`Due Date: ${due}`); }
+
+    return lines.join('\n');
+  }
 
   // Enable/disable BDC select
   function setBDCState($form, disabled){
@@ -407,7 +452,7 @@
     return { amount, label, preview };
   }
 
-  // Compute derived values (UPDATED RETURNS LOGIC)
+  // Compute derived values (unchanged)
   function computeFormValues($form){
     const p    = toNum($form.find('.p_bdc_input').val());
     const s    = toNum($form.find('.s_bdc_input').val());
@@ -416,28 +461,23 @@
     const q    = toNum($form.data('qty'));
     const mode = ($form.find('.order_type').val() || 'combo');
 
-    // per-L margins
     const marginPrice = s - p;       // Price Margin per L
     const marginTax   = sTax - pTax; // Tax Margin per L
 
-    // returns use margins (NOT raw S values)
-    const returnsPrice = marginPrice * q; // Price Margin × Q
-    const returnsTax   = marginTax * q;   // Tax Margin × Q
-    const returnsTotal = returnsPrice + returnsTax; // (Price + Tax) × Q
+    const returnsPrice = marginPrice * q;
+    const returnsTax   = marginTax * q;
+    const returnsTotal = returnsPrice + returnsTax;
 
-    // debt depends on order type
     const debtObj = computeDebtByMode(mode, s, sTax, q);
 
-    // write raw values to hidden inputs
     $form.find('.margin_input').val(toFixed2(marginPrice));
     $form.find('.margin_tax_input').val(toFixed2(marginTax));
-    $form.find('.returns_sbdc_input').val(toFixed2(returnsPrice));  // keep name for compatibility
-    $form.find('.returns_stax_input').val(toFixed2(returnsTax));    // keep name for compatibility
+    $form.find('.returns_sbdc_input').val(toFixed2(returnsPrice));
+    $form.find('.returns_stax_input').val(toFixed2(returnsTax));
     $form.find('.returns_total_input').val(toFixed2(returnsTotal));
-    $form.find('.returns_input').val(toFixed2(returnsTotal));       // legacy "returns"
+    $form.find('.returns_input').val(toFixed2(returnsTotal));
     $form.find('.total_debt_input').val(toFixed2(debtObj.amount));
 
-    // update formatted display fields
     $form.find('.margin_view').val(fmt(marginPrice));
     $form.find('.margin_tax_view').val(fmt(marginTax));
     $form.find('.returns_sbdc_display').text(fmt(returnsPrice));
@@ -445,7 +485,6 @@
     $form.find('.returns_total_display').text(fmt(returnsTotal));
     $form.find('.total_debt_view').val(fmt(debtObj.amount));
 
-    // formula chip + previews
     $form.find('.debt-formula-chip').text(`Formula: ${debtObj.label}`);
     $form.find('.debt-preview').text(debtObj.preview);
 
@@ -540,7 +579,7 @@
     });
   });
 
-  // Submit
+  // Submit (Confirm)
   $(document).on('submit', '.order-update-form', function (e) {
     e.preventDefault();
     const $form = $(this);
@@ -552,13 +591,50 @@
           return;
         }
         $('#order-alert').html(`<div class="alert alert-success">${res.message}</div>`);
-        setTimeout(() => loadContent('/orders', 'Review Orders'), 800);
+        setTimeout(() => (typeof loadContent === 'function' ? loadContent('/orders', 'Review Orders') : location.reload()), 800);
       })
       .fail(function (xhr) {
         const err = xhr.responseJSON?.error || 'Failed to update order.';
         $('#order-alert').html(`<div class="alert alert-danger">${err}</div>`);
       });
   });
+
+  // ----- WhatsApp Buttons -----
+  $(document).on('click', '.send-omc-btn', function(){
+    const $form = $(this).closest('form');
+    const $omcOpt = $form.find('.omc-select option:selected');
+    const phoneRaw = $omcOpt.data('rep-phone') || '';
+    const phone = normalizePhone(phoneRaw);
+
+    if(!$omcOpt.val()){
+      alert('Select an OMC first.');
+      return;
+    }
+    if(!phone){
+      alert('OMC rep phone number is missing for this OMC.');
+      return;
+    }
+
+    const msg = buildMessage($form, /*includeDepot*/ false);
+    openWhatsApp(phone, msg);
+  });
+
+  $(document).on('click', '.send-bdc-btn', function(){
+    const $form = $(this).closest('form');
+    const $bdcOpt = $form.find('.bdc-select option:selected');
+    const phoneRaw = $bdcOpt.data('rep-phone') || '';
+    const phone = normalizePhone(phoneRaw);
+
+    if(!$bdcOpt.val()){
+      alert('Select a BDC first.');
+      return;
+    }
+    if(!phone){
+      alert('BDC rep phone number is missing for this BDC.');
+      return;
+    }
+
+    const msg = buildMessage($form, /*includeDepot*/ true);
+    openWhatsApp(phone, msg);
+  });
 </script>
-</body>
-</html>
