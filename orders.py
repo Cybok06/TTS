@@ -5,11 +5,12 @@ from datetime import datetime
 
 orders_bp = Blueprint('orders', __name__, template_folder='templates')
 
-orders_collection   = db['orders']
-clients_collection  = db['clients']
-bdc_collection      = db['bdc']
-products_collection = db['products']  # Products collection
-
+orders_collection        = db['orders']
+clients_collection       = db['clients']
+bdc_collection           = db['bdc']
+products_collection      = db['products']   # Products collection
+omc_collection           = db['bd_omc']     # OMCs (with rep_phone)
+s_bdc_payment_collection = db['s_bdc_payment']  # ✅ central payment collection
 
 # --------------- helpers ---------------
 def _f(v):
@@ -23,7 +24,6 @@ def _nz(v):
     """None -> 0.0 without changing real zeros"""
     return v if v is not None else 0.0
 
-
 # --------------- pages ---------------
 @orders_bp.route('/', methods=['GET'])
 def view_orders():
@@ -32,7 +32,14 @@ def view_orders():
         return redirect(url_for('login.login'))
 
     orders = list(orders_collection.find({'status': 'pending'}).sort('date', -1))
-    bdcs = list(bdc_collection.find({}, {'name': 1}))  # _id included by default
+
+    # BDCs with contact fields
+    bdcs = list(
+        bdc_collection.find({}, {'name': 1, 'rep_phone': 1, 'phone': 1}).sort('name', 1)
+    )
+
+    # OMCs with contact fields
+    omcs = list(omc_collection.find({}, {'name': 1, 'rep_phone': 1}).sort('name', 1))
 
     for order in orders:
         # client could be stored as ObjectId or string
@@ -77,8 +84,7 @@ def view_orders():
         order['returns_total'] = round(ret_total, 2)
         order['returns']       = round(ret_total, 2)   # legacy alias
 
-    return render_template('partials/orders.html', orders=orders, bdcs=bdcs)
-
+    return render_template('partials/orders.html', orders=orders, bdcs=bdcs, omcs=omcs)
 
 @orders_bp.route('/update/<order_id>', methods=['POST'])
 def update_order(order_id):
@@ -135,35 +141,28 @@ def update_order(order_id):
     # Validate based on order type
     if mode not in ("s_bdc", "s_tax", "combo"):
         return jsonify({"success": False, "error": "Invalid order type."}), 400
-
-    if mode == "s_bdc":
-        if s is None:
-            return jsonify({"success": False, "error": "S-BDC is required for S-BDC type."}), 400
-    elif mode == "s_tax":
-        if s_tax is None:
-            return jsonify({"success": False, "error": "S-Tax is required for S-Tax type."}), 400
-    else:  # combo
-        if s is None or s_tax is None:
-            return jsonify({"success": False, "error": "S-BDC and S-Tax are required for Combo type."}), 400
+    if mode == "s_bdc" and s is None:
+        return jsonify({"success": False, "error": "S-BDC is required for S-BDC type."}), 400
+    if mode == "s_tax" and s_tax is None:
+        return jsonify({"success": False, "error": "S-Tax is required for S-Tax type."}), 400
+    if mode == "combo" and (s is None or s_tax is None):
+        return jsonify({"success": False, "error": "S-BDC and S-Tax are required for Combo type."}), 400
 
     # ---- per-L margins ----
     margin_price = (s - p) if (s is not None and p is not None) else None
     margin_tax   = (s_tax - p_tax) if (s_tax is not None and p_tax is not None) else None
 
-    # ---- total debt by order type (unchanged) ----
+    # ---- total debt by order type ----
     if mode == "s_bdc":
-        total_debt   = _nz(s) * q
-        active_margin = margin_price
+        total_debt = _nz(s) * q
     elif mode == "s_tax":
-        total_debt   = _nz(s_tax) * q
-        active_margin = margin_tax
+        total_debt = _nz(s_tax) * q
     else:  # combo
-        total_debt   = (_nz(s) + _nz(s_tax)) * q
-        active_margin = margin_price  # for display; you can keep this convention
+        total_debt = (_nz(s) + _nz(s_tax)) * q
 
-    # ---- RETURNS (FIXED): use MARGINS, not S values ----
-    returns_price = _nz(margin_price) * q  # 0 if price margin not available
-    returns_tax   = _nz(margin_tax) * q    # 0 if tax margin not available
+    # ---- RETURNS: use MARGINS, not S values ----
+    returns_price = _nz(margin_price) * q
+    returns_tax   = _nz(margin_tax) * q
     returns_total = returns_price + returns_tax
 
     # Build update doc
@@ -177,15 +176,14 @@ def update_order(order_id):
         "s_tax": s_tax,
         "order_type": mode,
         "total_debt": round(total_debt, 2),
-        # store parts as "returns_*" for continuity with the UI
-        "returns_sbdc": round(returns_price, 2),   # price-margin × Q
-        "returns_stax": round(returns_tax, 2),     # tax-margin × Q
+        "returns_sbdc": round(returns_price, 2),
+        "returns_stax": round(returns_tax, 2),
         "returns_total": round(returns_total, 2),
-        "returns": round(returns_total, 2),        # legacy alias
+        "returns": round(returns_total, 2),  # legacy alias
     }
     if margin_price is not None:
         update_data["margin_price"] = round(margin_price, 2)
-        update_data["margin"] = round(margin_price, 2)  # keep your existing "margin" field behavior
+        update_data["margin"] = round(margin_price, 2)
     if margin_tax is not None:
         update_data["margin_tax"] = round(margin_tax, 2)
 
@@ -198,7 +196,7 @@ def update_order(order_id):
     else:
         update_data["due_date"] = None
 
-    # BDC lookup & set only when not S-Tax
+    # BDC lookup & set only when not S-Tax (still validate & capture names for UI)
     bdc_id = None
     if mode != "s_tax":
         try:
@@ -214,51 +212,36 @@ def update_order(order_id):
         update_data["bdc_name"] = bdc.get("name", "")
 
     # ---------------------------
-    # Payment handling (unchanged logic)
+    # Payment handling (ONLY -> s_bdc_payment)
     # ---------------------------
     payment_type_norm = (fields["payment_type"] or "").strip().lower()
 
-    # If order_type is S-Tax, ignore any posted payment fields (UI disables them)
     if mode != "s_tax" and payment_type_norm in ("cash", "from account", "credit"):
-        calc_amount = None
+        if p is None:
+            return jsonify({"success": False, "error": "P-BDC is required to compute payment amount"}), 400
+        calc_amount = round(q * p, 2)
 
-        if payment_type_norm in ("cash", "from account", "credit"):
-            # UI auto-fills qty × P-BDC for all three; validate P-BDC exists
-            if p is None:
-                return jsonify({"success": False, "error": "P-BDC is required to compute payment amount"}), 400
-            calc_amount = round(q * p, 2)
+        # EXACT schema as BDC.payment_details items
+        payment_entry = {
+            "order_id": ObjectId(order_id),
+            "payment_type": fields["payment_type"],  # original case
+            "amount": calc_amount,
+            "client_name": client_name or "—",
+            "product": order.get("product", ""),
+            "vehicle_number": order.get("vehicle_number", ""),
+            "driver_name": order.get("driver_name", ""),
+            "driver_phone": order.get("driver_phone", ""),
+            "quantity": order.get("quantity", ""),
+            "region": order.get("region", ""),
+            "delivery_status": "pending",
+            "shareholder": fields["shareholder"] or None,
+            "date": datetime.utcnow()
+        }
 
-        if calc_amount is not None:
-            payment_entry = {
-                "order_id": ObjectId(order_id),
-                "payment_type": fields["payment_type"],   # original case
-                "amount": calc_amount,
-                "client_name": client_name or "—",
-                "product": order.get("product", ""),
-                "vehicle_number": order.get("vehicle_number", ""),
-                "driver_name": order.get("driver_name", ""),
-                "driver_phone": order.get("driver_phone", ""),
-                "quantity": order.get("quantity", ""),
-                "region": order.get("region", ""),
-                "delivery_status": "pending",
-                "shareholder": fields["shareholder"] or None,
-                "date": datetime.utcnow()
-            }
+        # ✅ Write ONLY to central collection
+        s_bdc_payment_collection.insert_one(payment_entry)
 
-            # Push to ORDER
-            orders_collection.update_one(
-                {"_id": ObjectId(order_id)},
-                {"$push": {"payment_details": payment_entry}}
-            )
-
-            # Also push to BDC only if we have one (i.e., not S-Tax)
-            if bdc_id:
-                bdc_collection.update_one(
-                    {"_id": bdc_id},
-                    {"$push": {"payment_details": payment_entry}}
-                )
-
-    # Status – approve if totals + margin exist as appropriate (independent of balance)
+    # Status
     complete_fields = (update_data.get("total_debt") is not None) and (
         (mode == "s_tax" and ("returns_total" in update_data or "margin_tax" in update_data)) or
         (mode in ("s_bdc", "combo") and ("returns_total" in update_data or "margin" in update_data))
@@ -280,7 +263,6 @@ def update_order(order_id):
 
     return jsonify(resp)
 
-
 @orders_bp.route('/get_product_price', methods=['GET'])
 def get_product_price():
     product_name = (request.args.get('name', '') or '').strip().lower()
@@ -293,13 +275,9 @@ def get_product_price():
         's_price': product.get('s_price', 0)
     })
 
-
 # --------------- invoice page ---------------
 @orders_bp.route('/invoice/<order_id>', methods=['GET'])
 def order_invoice(order_id):
-    """
-    Render the advanced invoice page with all order details filled in.
-    """
     try:
         oid = ObjectId(order_id)
     except Exception:
@@ -311,7 +289,6 @@ def order_invoice(order_id):
         flash("Order not found.", "danger")
         return redirect(url_for('orders.view_orders'))
 
-    # Load client (works if stored as ObjectId or plain client_id string)
     client = None
     cid = order.get("client_id")
     if cid:
@@ -320,7 +297,7 @@ def order_invoice(order_id):
         except Exception:
             client = clients_collection.find_one({"client_id": str(cid)})
 
-    # Optional receipt ref if you ever include it in payment_details
+    # Optional receipt ref if present (kept for compatibility; may be empty now)
     receipt_ref = None
     p_details = (order.get("payment_details") or [])
     if p_details:
@@ -328,7 +305,7 @@ def order_invoice(order_id):
         receipt_ref = latest.get("receipt_ref")
 
     return render_template(
-        "partials/invoice.html",   # <-- ensure this template exists (your advanced HTML)
+        "partials/invoice.html",
         order=order,
         client=client or {},
         now=datetime.utcnow(),
