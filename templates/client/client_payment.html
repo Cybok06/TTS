@@ -21,6 +21,17 @@
     .back-link { display: inline-flex; align-items: center; margin-bottom: 20px; color: #0d6efd; text-decoration: none; font-weight: 500; }
     .back-link i { margin-right: 6px; }
     .hint { font-size: .875rem; color: #6c757d; }
+
+    /* Full-page loading overlay */
+    #loadingOverlay {
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,0.85);
+      display: none; z-index: 2000;
+      align-items: center; justify-content: center; flex-direction: column;
+      backdrop-filter: blur(2px);
+    }
+    #loadingOverlay.show { display: flex; }
+    .loading-text { margin-top: 12px; font-weight: 600; color: #0b7a3b; }
   </style>
 </head>
 <body>
@@ -32,6 +43,38 @@
     <span class="ms-2 fw-bold text-primary"></span>
   </a>
 </nav>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" aria-hidden="true">
+  <div class="text-center">
+    <div class="spinner-border text-success" role="status" aria-label="Loading"></div>
+    <div class="loading-text">Submitting payment…</div>
+  </div>
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0">
+      <div class="modal-header">
+        <h5 class="modal-title d-flex align-items-center gap-2" id="confirmModalLabel">
+          <i class="bi bi-check-circle-fill text-success" id="confirmIcon"></i>
+          <span id="confirmTitle">Payment Submitted</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="confirmMessage" class="mb-0">Your payment has been received. We’ll notify you after verification.</p>
+      </div>
+      <div class="modal-footer">
+        <a id="confirmRedirect" href="/client/dashboard" class="btn btn-success">
+          <i class="bi bi-speedometer2"></i> Go to Dashboard
+        </a>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="container page-wrapper">
   <a href="/client/dashboard" class="back-link mt-3"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
@@ -48,7 +91,8 @@
       {% endif %}
     {% endwith %}
 
-    <form method="POST" id="paymentForm">
+    <!-- Add action if you have a specific route; otherwise current path is used -->
+    <form method="POST" id="paymentForm" enctype="multipart/form-data">
       <!-- Payment Type -->
       <div class="mb-3">
         <label for="payment_type" class="form-label">Payment Type</label>
@@ -114,12 +158,14 @@
         <input type="file" id="image" accept="image/*" required class="form-control">
         <input type="hidden" name="proof_url" id="proof_url">
         <div id="upload-status" class="text-muted mt-2 d-flex align-items-center"></div>
-        <img id="preview_image" src="" class="d-none mt-2">
+        <img id="preview_image" src="" class="d-none mt-2" alt="Proof preview">
       </div>
 
       <!-- Submit -->
       <div class="d-grid">
-        <button type="submit" class="btn btn-success"><i class="bi bi-upload"></i> Submit Payment</button>
+        <button type="submit" id="submitBtn" class="btn btn-success">
+          <i class="bi bi-upload me-1"></i> <span>Submit Payment</span>
+        </button>
       </div>
     </form>
   </div>
@@ -247,7 +293,7 @@
     }
   });
 
-  // -------- No tojson needed: build from DOM --------
+  // -------- Amount helpers --------
   const orderSelect   = document.getElementById('order_id');
   const amountInput   = document.getElementById('amount');
   const fullPayBtn    = document.getElementById('fullPayBtn');
@@ -283,7 +329,6 @@
   const orderMap       = getOrderOutstandingMap();
   let fullOutstanding  = getFullOutstanding();
 
-  // Update hint text in case server didn't render it
   if (fullTotalText) {
     fullTotalText.textContent = `GHS ${formatMoney(fullOutstanding)}`;
   }
@@ -302,6 +347,118 @@
     });
   }
 </script>
+
+<!-- Submit with spinner + confirmation modal -->
+<script>
+  (function() {
+    const form = document.getElementById('paymentForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const overlay = document.getElementById('loadingOverlay');
+
+    // Bootstrap Modal instance
+    const confirmModalEl = document.getElementById('confirmModal');
+    const confirmModal = new bootstrap.Modal(confirmModalEl, { backdrop: 'static' });
+    const confirmTitle = document.getElementById('confirmTitle');
+    const confirmMsg   = document.getElementById('confirmMessage');
+    const confirmIcon  = document.getElementById('confirmIcon');
+    const confirmRedirect = document.getElementById('confirmRedirect');
+
+    function showSpinner(state) {
+      if (state) {
+        overlay.classList.add('show');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Submitting...';
+      } else {
+        overlay.classList.remove('show');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-upload me-1"></i><span>Submit Payment</span>';
+      }
+    }
+
+    function showConfirmModal({ success=true, title, message, redirect }) {
+      confirmTitle.textContent = title || (success ? 'Payment Submitted' : 'Submission Failed');
+      confirmMsg.textContent   = message || (success
+        ? 'Your payment has been received. We’ll notify you after verification.'
+        : 'We could not submit your payment. Please review the form and try again.');
+
+      confirmIcon.className = success
+        ? 'bi bi-check-circle-fill text-success'
+        : 'bi bi-x-circle-fill text-danger';
+
+      if (redirect) {
+        confirmRedirect.href = redirect;
+        confirmRedirect.classList.remove('d-none');
+      } else {
+        confirmRedirect.classList.add('d-none');
+      }
+
+      confirmModal.show();
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Guard: proof required (since input file is not posted via Fetch unless we include it)
+      const proofUrl = document.getElementById('proof_url')?.value?.trim();
+      if (!proofUrl) {
+        showConfirmModal({ success:false, title:'Proof Required', message:'Please upload your payment proof before submitting.' });
+        return;
+      }
+
+      showSpinner(true);
+
+      try {
+        const action = form.getAttribute('action') || window.location.pathname;
+        const fd = new FormData(form);
+
+        const res = await fetch(action, {
+          method: 'POST',
+          body: fd,
+          headers: { 'X-Requested-With': 'fetch' } // hint for server if needed
+        });
+
+        // Try to read JSON; if not JSON, still treat as success if 2xx
+        let payload = {};
+        const text = await res.text();
+        try { payload = JSON.parse(text); } catch (_) { /* not JSON */ }
+
+        const ok = res.ok && (payload.error === undefined);
+        const message = payload.message
+          || (ok ? 'Your payment has been received. We’ll notify you after verification.' : (payload.error || 'Submission failed.'));
+
+        // Optional redirect URL from backend
+        const redirect = payload.redirect || (ok ? null : null);
+
+        showSpinner(false);
+        showConfirmModal({
+          success: ok,
+          title: ok ? 'Payment Submitted' : 'Submission Failed',
+          message,
+          redirect
+        });
+
+        // If backend returns a redirect target and wants us to move after closing modal:
+        confirmModalEl.addEventListener('hidden.bs.modal', () => {
+          if (ok && redirect) window.location.href = redirect;
+          // Soft reset on success (keep proof preview visible)
+          if (ok) form.reset();
+        }, { once: true });
+
+      } catch (err) {
+        console.error(err);
+        showSpinner(false);
+        showConfirmModal({
+          success:false,
+          title:'Network Error',
+          message:'We could not reach the server. Please check your connection and try again.'
+        });
+      }
+    });
+  })();
+</script>
+
+<!-- Bootstrap JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 </body>
 </html>
